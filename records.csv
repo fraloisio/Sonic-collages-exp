@@ -1,5 +1,2 @@
-1,Two Worlds Collide in Static Silence,20251120-222603,/data/...,/data/...,/data/...,
-https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/main/audio/0001-two-worlds-collide-in-static-silence-20251120-222603.wav,
-https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/main/images/0001-two-worlds-collide-in-static-silence-20251120-222603.png,
-https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/main/texts/0001-two-worlds-collide-in-static-silence-20251120-222603.txt,
-"A black-and-white photo...", "Industrial dusk ambience..."
+id,title,timestamp,audio_local,image_local,text_local,audio_url,image_url,text_url,analysis,long_prompt
+1,Two Worlds Collide in Static Silence,20251120-222603,/data/sonic_runs/audio/0001-two-worlds-collide-in-static-silence-20251120-222603.wav,/data/sonic_runs/images/0001-two-worlds-collide-in-static-silence-20251120-222603.png,/data/sonic_runs/texts/0001-two-worlds-collide-i_
