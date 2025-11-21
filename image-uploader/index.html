@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sonic Runs • Custom Interface</title>
+
+  <!-- Space Grotesk font -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Upload Screen -->
+  <div id="upload-screen" class="screen active">
+      <h1>Sonic Runs</h1>
+      <p>Upload an image to begin your sonic journey.</p>
+      <input type="file" id="imageInput" accept="image/*" />
+      <button id="generateBtn">Generate Audio</button>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="screen">
+      <div class="loader"></div>
+      <p>Interpreting your image…</p>
+      <p>Listening to hidden textures…</p>
+      <p>Forging audio in the global bubble space…</p>
+  </div>
+
+  <!-- Result Screen -->
+  <div id="result-screen" class="screen">
+      <h2>Your Audio Is Ready</h2>
+      <audio id="audioPlayer" controls></audio>
+      <p id="statusMessage"></p>
+      <button onclick="resetApp()">Upload Another</button>
+  </div>
+
+  <!-- Error Screen -->
+  <div id="error-screen" class="screen">
+      <h2>Something Went Wrong</h2>
+      <p>Please try again.</p>
+      <button onclick="resetApp()">Retry</button>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
