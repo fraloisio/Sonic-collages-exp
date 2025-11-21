@@ -1,7 +1,7 @@
 let client;
 
 async function initClient() {
-    client = await window.gradioClient.Client.connect(
+    client = await gradio.Client.connect(
         "Hope-and-Despair/Stable-Audio-freestyle-new-experiments"
     );
 }
@@ -20,15 +20,19 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
             { image: file }
         );
 
-        // Expect audio output in result object
         console.log(result);
 
-        const audioUrl = result?.data?.[0]?.url || result?.audio || null;
+        // The HF client returns { data: [...] }
+        const audioElement = document.getElementById("audioPlayer");
 
-        if (!audioUrl) throw new Error("No audio returned");
+        const audioUrl =
+            result?.data?.[0]?.url ??
+            result?.data?.[0] ??
+            null;
 
-        const player = document.getElementById("audioPlayer");
-        player.src = audioUrl;
+        if (!audioUrl) throw new Error("No audio returned.");
+
+        audioElement.src = audioUrl;
 
         document.getElementById("statusMessage").innerHTML =
             "Your image has been transferred to the Global Bubbles Space.<br>Its echoes are now part of the archive.";
@@ -36,11 +40,10 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
         switchScreen("loading-screen", "result-screen");
 
     } catch (err) {
-        console.error(err);
+        console.error("API error:", err);
         switchScreen("loading-screen", "error-screen");
     }
 });
-
 
 function switchScreen(from, to) {
     document.getElementById(from).classList.remove("active");
@@ -48,6 +51,6 @@ function switchScreen(from, to) {
 }
 
 function resetApp() {
-    switchScreen("result-screen", "upload-screen");
-    switchScreen("error-screen", "upload-screen");
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById("upload-screen").classList.add("active");
 }
