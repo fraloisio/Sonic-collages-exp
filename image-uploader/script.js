@@ -1,9 +1,14 @@
-let client;
+import { client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
+
+let app;
 
 async function initClient() {
-    client = await gradio.Client.connect(
-        "Hope-and-Despair/Stable-Audio-freestyle-new-experiments"
-    );
+    try {
+        app = await client("Hope-and-Despair/Stable-Audio-freestyle-new-experiments");
+    } catch (err) {
+        console.error("Failed to init Gradio client", err);
+        switchScreen("upload-screen", "error-screen");
+    }
 }
 
 initClient();
@@ -12,15 +17,15 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
     const file = document.getElementById("imageInput").files[0];
     if (!file) return alert("Please upload an image.");
 
+    if (!app) {
+        alert("Still connecting to the server. Please try again in a moment.");
+        return;
+    }
+
     switchScreen("upload-screen", "loading-screen");
 
     try {
-        const result = await client.predict(
-            "/pipeline_from_image",
-            { image: file }
-        );
-
-        console.log(result);
+        const result = await app.predict("/pipeline_from_image", { image: file });
 
         // The HF client returns { data: [...] }
         const audioElement = document.getElementById("audioPlayer");
