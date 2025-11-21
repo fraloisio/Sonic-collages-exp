@@ -63,6 +63,7 @@
 
     let bubbles = [];
     let bubblesById = {};
+    let pRef = null; // hold p5 instance so Bubble can load images
 
     class Bubble {
       constructor(record) {
@@ -71,6 +72,8 @@
         this.description = record.description || "";
         this.imageUrl = record.imageUrl || null;
         this.audioUrl = record.audioUrl || null;
+        this.image = null;
+        this.imageAlpha = 0;
 
         this.x = Math.random() * window.innerWidth;
         this.y = Math.random() * window.innerHeight;
@@ -90,6 +93,7 @@
 
         if (this.imageUrl) {
           this.loadAverageColorFromImage(this.imageUrl);
+          this.loadImage(this.imageUrl);
         }
         if (this.audioUrl) {
           this.audio = new Audio(this.audioUrl);
@@ -136,9 +140,25 @@
         };
       }
 
+      loadImage(url) {
+        if (!pRef) return;
+        this.image = null;
+        this.imageAlpha = 0;
+        pRef.loadImage(
+          url,
+          img => {
+            this.image = img;
+          },
+          err => {
+            console.warn("Could not load bubble image", url, err);
+          }
+        );
+      }
+
       setExpanded(expanded) {
         this.expanded = expanded;
         this.targetRadius = expanded ? EXPANDED_RADIUS : BASE_RADIUS;
+        this.targetImageAlpha = expanded ? 255 : 0;
         if (!this.audio) return;
         if (expanded) {
           this.fadeInAudio();
@@ -193,6 +213,7 @@
         if (this.y > window.innerHeight - margin) { this.y = window.innerHeight - margin; this.vy *= -1; }
 
         this.radius = lerp(this.radius, this.targetRadius, 0.1);
+        this.imageAlpha = lerp(this.imageAlpha, this.expanded ? 255 : 0, 0.1);
       }
 
       draw(p) {
@@ -204,6 +225,26 @@
 
         p.fill(r, g, b, this.expanded ? 230 : 180);
         p.circle(this.x, this.y, this.radius * 2);
+
+        if (this.image && this.imageAlpha > 1 && this.expanded) {
+          p.push();
+          p.translate(this.x, this.y);
+          p.tint(255, this.imageAlpha);
+          const imgSize = this.radius * 2 * 0.95;
+          const ctx = p.drawingContext;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(0, 0, imgSize / 2, 0, Math.PI * 2);
+          ctx.clip();
+          const iw = this.image.width;
+          const ih = this.image.height;
+          const scale = Math.max(imgSize / iw, imgSize / ih);
+          const drawW = iw * scale;
+          const drawH = ih * scale;
+          p.image(this.image, -drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.restore();
+          p.pop();
+        }
 
         if (this.expanded) {
           p.fill(255);
@@ -238,7 +279,32 @@
     // ==============================
 
     function parseCSV(text) {
-      const lines = text.trim().split(/\r?\n/);
+      const lines = [];
+      let currentLine = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '"') {
+          const next = text[i + 1];
+          currentLine += ch;
+          if (inQuotes && next === '"') {
+            currentLine += next;
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === "\n" && !inQuotes) {
+          lines.push(currentLine.replace(/\r$/, ""));
+          currentLine = "";
+        } else {
+          currentLine += ch;
+        }
+      }
+      if (currentLine.trim() !== "") {
+        lines.push(currentLine.replace(/\r$/, ""));
+      }
+
       if (lines.length === 0) return [];
 
       const header = parseCSVRow(lines[0]).map(h => h.trim().toLowerCase());
@@ -354,6 +420,7 @@
           if (rec.imageUrl && rec.imageUrl !== b.imageUrl) {
             b.imageUrl = rec.imageUrl;
             b.loadAverageColorFromImage(rec.imageUrl);
+            b.loadImage(rec.imageUrl);
           }
           if (rec.audioUrl && rec.audioUrl !== b.audioUrl) {
             b.audioUrl = rec.audioUrl;
@@ -378,6 +445,7 @@
 
     new p5(p => {
       p.setup = () => {
+        pRef = p;
         const canvas = p.createCanvas(window.innerWidth, window.innerHeight);
         canvas.parent("p5-container");
         p.frameRate(60);
