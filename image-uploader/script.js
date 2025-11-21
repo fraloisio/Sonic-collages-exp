@@ -63,16 +63,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const client = await Client.connect(HF_SPACE);
 
       const file = fileInput.files[0];
+      const uploadedImage = await client.upload(file); // ensure the file is available to the Space
 
       const result = await client.predict("/pipeline_from_image", {
-        image: file,
+        image: uploadedImage,
       });
 
-      const [audioUrl, metadataUrl] = result.data;
+      const [audioResult, metadataResult] = result.data;
+      const audioUrl = audioResult?.url ?? audioResult;
+      const metadataUrl = metadataResult?.url ?? metadataResult;
 
       // Set outputs
       outputImage.src = URL.createObjectURL(file);
       audioPlayer.src = audioUrl;
+      audioPlayer.load();
       metadataLink.href = metadataUrl;
 
       show(screenSuccess);
@@ -104,6 +108,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // ----------------------------------------------
   // Back buttons
   // ----------------------------------------------
-  btnBack.addEventListener("click", () => show(screenUpload));
-  btnErrorBack.addEventListener("click", () => show(screenUpload));
-});
+  function resetUi() {
+    outputImage.src = "";
+    audioPlayer.src = "";
+    audioPlayer.load();
+    metadataLink.removeAttribute("href");
+    fileInput.value = "";
+    errorMessage.textContent = "";
+  }
+
+  btnBack.addEventListener("click", () => {
+    resetUi();
+    show(screenUpload);
+  });
+
+  btnErrorBack.addEventListener("click", () => {
+    resetUi();
+    show(screenUpload);
+  });
