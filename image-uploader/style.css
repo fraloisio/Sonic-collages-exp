@@ -1,49 +1,60 @@
 body {
-    margin: 0;
-    background: #000;
-    color: #fff;
-    font-family: 'Space Grotesk', sans-serif;
-    text-align: center;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-family: "Space Grotesk", sans-serif;
+  background: #000;
+  color: #fff;
+  text-align: center;
 }
 
 .screen {
-    display: none;
-    max-width: 500px;
+  display: none;
+  padding: 40px 20px;
 }
 
 .screen.active {
-    display: block;
+  display: block;
+}
+
+h1, h2 {
+  font-weight: 400;
+}
+
+input {
+  margin-top: 20px;
 }
 
 button {
-    margin-top: 20px;
-    padding: 12px 24px;
-    background: #fff;
-    border: none;
-    color: #000;
-    font-size: 16px;
-    cursor: pointer;
-    font-weight: 600;
+  margin-top: 30px;
+  padding: 12px 26px;
+  background: #fff;
+  color: #000;
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
 }
 
 button:hover {
-    background: #ddd;
+  background: #ccc;
 }
 
+/* Loader */
 .loader {
-    margin: 40px auto;
-    width: 40px;
-    height: 40px;
-    border: 4px solid #444;
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 1.2s linear infinite;
+  border: 5px solid rgba(255,255,255,0.2);
+  border-top: 5px solid #fff;
+  border-radius: 50%;
+  width: 55px;
+  height: 55px;
+  margin: 40px auto;
+  animation: spin 0.9s linear infinite;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
+}
+
+audio {
+  margin: 20px 0;
+  width: 80%;
+  max-width: 500px;
 }

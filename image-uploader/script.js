@@ -1,68 +1,59 @@
-import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
+import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
 
-// Optional: set a token via devtools/localStorage to avoid hardcoding secrets
-// localStorage.setItem("hf_token", "replicate-your-token-here");
-const HF_TOKEN = window.HF_TOKEN || localStorage.getItem("hf_token") || null;
+const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
 
-let app;
+// Screen controls
+const show = id => {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+};
 
-async function initClient() {
-    try {
-        app = await Client.connect(
-            "Hope-and-Despair/Stable-Audio-freestyle-new-experiments",
-            { hf_token: HF_TOKEN || undefined }
-        );
-    } catch (err) {
-        console.error("Failed to init Gradio client", err);
-        switchScreen("upload-screen", "error-screen");
-    }
-}
+// Elements
+const fileInput = document.getElementById("file-input");
+const btnGenerate = document.getElementById("btn-generate");
+const audioPlayer = document.getElementById("audio-player");
+const metadataLink = document.getElementById("metadata-link");
+const errorMessage = document.getElementById("error-message");
+const btnBack = document.getElementById("btn-back");
+const btnErrorBack = document.getElementById("btn-error-back");
 
-initClient();
+// Upload → Generate
+btnGenerate.onclick = async () => {
+  if (!fileInput.files.length) {
+    alert("Please select an image first.");
+    return;
+  }
 
-document.getElementById("generateBtn").addEventListener("click", async () => {
-    const file = document.getElementById("imageInput").files[0];
-    if (!file) return alert("Please upload an image.");
+  show("screen-loading");
 
-    if (!app) {
-        alert("Still connecting to the server. Please try again in a moment.");
-        return;
-    }
+  try {
+    const file = fileInput.files[0];
 
-    switchScreen("upload-screen", "loading-screen");
+    const client = await Client.connect(HF_SPACE);
 
-    try {
-        const result = await app.predict("/pipeline_from_image", { image: file });
+    // Run the pipeline
+    const result = await client.predict("/pipeline_from_image", {
+      image: file
+    });
 
-        // The HF client returns { data: [...] }
-        const audioElement = document.getElementById("audioPlayer");
+    const [audioUrl, metadataUrl] = result.data;
 
-        const audioUrl =
-            result?.data?.[0]?.url ??
-            result?.data?.[0] ??
-            null;
+    // Populate success screen
+    audioPlayer.src = audioUrl;
+    metadataLink.href = metadataUrl;
 
-        if (!audioUrl) throw new Error("No audio returned.");
+    show("screen-success");
 
-        audioElement.src = audioUrl;
+  } catch (err) {
+    console.error(err);
+    errorMessage.textContent =
+      err?.message ||
+      err?.title ||
+      "Something went wrong. Please try again.";
 
-        document.getElementById("statusMessage").innerHTML =
-            "Your image has been transferred to the Global Bubbles Space.<br>Its echoes are now part of the archive.";
+    show("screen-error");
+  }
+};
 
-        switchScreen("loading-screen", "result-screen");
-
-    } catch (err) {
-        console.error("API error:", err);
-        switchScreen("loading-screen", "error-screen");
-    }
-});
-
-function switchScreen(from, to) {
-    document.getElementById(from).classList.remove("active");
-    document.getElementById(to).classList.add("active");
-}
-
-function resetApp() {
-    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-    document.getElementById("upload-screen").classList.add("active");
-}
+btnBack.onclick = () => show("screen-upload");
+btnErrorBack.onclick = () => show("screen-upload");
