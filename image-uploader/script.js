@@ -3,14 +3,13 @@ import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.m
 document.addEventListener("DOMContentLoaded", () => {
 
   // ----------------------------------------------
-  // FAKE MODE
+  // TOGGLE: turn fake mode on/off
   // ----------------------------------------------
-  const FAKE_MODE = true;
+  const FAKE_MODE = false; // ← set true/false manually
 
-  // These get converted into URLs automatically by your system
-  const FAKE_AUDIO_URL = "/mnt/data/0014-serpentine-ascent-through-mist-20251121-224139.wav";
-  const FAKE_METADATA_URL = "/mnt/data/0014-serpentine-ascent-through-mist-20251121-224139.txt";
-  const FAKE_IMAGE_URL = "/mnt/data/0014-serpentine-ascent-through-mist-20251121-224139.png";
+  // Optional placeholder assets ONLY used when FAKE_MODE = true
+  const FAKE_AUDIO = "fake/fake-audio.mp3";
+  const FAKE_METADATA = "fake/fake-metadata.txt";
 
   // ----------------------------------------------
   // DOM elements
@@ -27,14 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const audioPlayer = document.getElementById("audio-player");
   const metadataLink = document.getElementById("metadata-link");
+  const outputImage = document.getElementById("output-image");
   const errorMessage = document.getElementById("error-message");
 
-  // (Optional) if you want to show output image, add an <img> in HTML:
-  // <img id="fake-output-image" />
-  const fakeImageElement = document.getElementById("fake-output-image");
-
   // ----------------------------------------------
-  // Helper for switching screens
+  // Helper: switch UI screens
   // ----------------------------------------------
   function show(screen) {
     screenUpload.classList.remove("active");
@@ -45,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ----------------------------------------------
-  // Main Generate Button
+  // Main click: GENERATE AUDIO
   // ----------------------------------------------
   btnGenerate.addEventListener("click", async () => {
 
@@ -56,21 +52,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     show(screenLoading);
 
-    // ----------------------------
-    // FAKE MODE SHORTCUT
-    // ----------------------------
+    // ---------- FAKE MODE ----------
     if (FAKE_MODE) {
-      return runFakePipeline();
+      return runFakeMode();
     }
 
-    // ----------------------------
-    // REAL HUGGING FACE MODE
-    // (turned off until your Space is generating again)
-    // ----------------------------
-
+    // ---------- REAL MODE ----------
     try {
       const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
       const client = await Client.connect(HF_SPACE);
+
       const file = fileInput.files[0];
 
       const result = await client.predict("/pipeline_from_image", {
@@ -79,6 +70,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const [audioUrl, metadataUrl] = result.data;
 
+      // Set outputs
+      outputImage.src = URL.createObjectURL(file);
       audioPlayer.src = audioUrl;
       metadataLink.href = metadataUrl;
 
@@ -91,40 +84,26 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ----------------------------------------------
-  // FAKE PIPELINE (works instantly)
+  // FAKE MODE generator
   // ----------------------------------------------
-  async function runFakePipeline() {
-    console.log("🎭 Fake mode active — simulating generation…");
+  async function runFakeMode() {
 
-    // delay to simulate “processing” animation
-    await new Promise((res) => setTimeout(res, 1800));
+    // simulate loading delay
+    await new Promise((res) => setTimeout(res, 1000));
 
-    try {
-      // AUDIO
-      audioPlayer.src = FAKE_AUDIO_URL;
+    // preview the uploaded image
+    const file = fileInput.files[0];
+    outputImage.src = URL.createObjectURL(file);
 
-      // METADATA
-      metadataLink.href = FAKE_METADATA_URL;
-      metadataLink.download = "metadata.txt";
+    audioPlayer.src = FAKE_AUDIO;
+    metadataLink.href = FAKE_METADATA;
 
-      // (Optional) IMAGE PREVIEW
-      if (fakeImageElement) {
-        fakeImageElement.src = FAKE_IMAGE_URL;
-      }
-
-      show(screenSuccess);
-
-    } catch (err) {
-      console.error(err);
-      errorMessage.textContent = "Fake data failed to load (unlikely).";
-      show(screenError);
-    }
+    show(screenSuccess);
   }
 
   // ----------------------------------------------
-  // Back Buttons
+  // Back buttons
   // ----------------------------------------------
   btnBack.addEventListener("click", () => show(screenUpload));
   btnErrorBack.addEventListener("click", () => show(screenUpload));
-
 });
