@@ -1,10 +1,16 @@
 import { client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
 
+// Optional: set a token via devtools/localStorage to avoid hardcoding secrets
+// localStorage.setItem("hf_token", "replicate-your-token-here");
+const HF_TOKEN = window.HF_TOKEN || localStorage.getItem("hf_token") || null;
+
 let app;
 
 async function initClient() {
     try {
-        app = await client("Hope-and-Despair/Stable-Audio-freestyle-new-experiments");
+        app = await client("Hope-and-Despair/Stable-Audio-freestyle-new-experiments", {
+            hf_token: HF_TOKEN || undefined,
+        });
     } catch (err) {
         console.error("Failed to init Gradio client", err);
         switchScreen("upload-screen", "error-screen");
