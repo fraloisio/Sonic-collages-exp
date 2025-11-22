@@ -66,60 +66,69 @@ document.addEventListener("DOMContentLoaded", () => {
     if (x.data?.path) return x.data.path;
     return "";
   }
+// ----------------------------------------------
+// MAIN BUTTON
+// ----------------------------------------------
+btnGenerate.addEventListener("click", async () => {
 
-  // ----------------------------------------------
-  // MAIN BUTTON
-  // ----------------------------------------------
-  btnGenerate.addEventListener("click", async () => {
-
-    if (!fileInput.files.length) {
-      alert("Please upload an image first.");
-      return;
-    }
-
-    show(screenLoading);
-
-    // FAKE MODE
-    if (FAKE_MODE) return runFake();
-
-    // REAL MODE
-    try {
-      const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
-      const client = await Client.connect(HF_SPACE);
-
-      const file = fileInput.files[0];
-      const uploaded = await client.upload(file);
-
-      const result = await client.predict("/pipeline_from_image", {
-        image: uploaded,
-      });
-
-      const [audioRes, metaRes] = result.data;
-
-      audioPlayer.src = toUrl(audioRes);
-      metadataLink.href = toUrl(metaRes);
-      outputImage.src = URL.createObjectURL(file);
-
-      show(screenSuccess);
-
-    } catch (err) {
-      console.error(err);
-      errorMessage.textContent = err?.message || "Something went wrong.";
-      show(screenError);
-    }
-  });
-
-  // ----------------------------------------------
-  // FAKE MODE PIPELINE
-  // ----------------------------------------------
-  async function runFake() {
-    await new Promise(r => setTimeout(r, 800));
-    const file = fileInput.files[0];
-    outputImage.src = URL.createObjectURL(file);
-    audioPlayer.src = FAKE_AUDIO;
-    metadataLink.href = FAKE_METADATA;
-    show(screenSuccess);
+  if (!fileInput.files.length) {
+    alert("Please upload an image first.");
+    return;
   }
+
+  show(screenLoading);
+
+  // --- FAKE MODE ACTIVE ---
+  if (FAKE_MODE) {
+    return runFake();    // ← STOP EVERYTHING ELSE
+  }
+
+  // --- REAL API MODE ---
+  try {
+    const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
+    const client = await Client.connect(HF_SPACE);
+
+    const file = fileInput.files[0];
+    const uploaded = await client.upload(file);
+
+    const result = await client.predict("/pipeline_from_image", {
+      image: uploaded,
+    });
+
+    const [audioRes, metaRes] = result.data;
+
+    audioPlayer.src = toUrl(audioRes);
+    metadataLink.href = toUrl(metaRes);
+    outputImage.src = URL.createObjectURL(file);
+
+    show(screenSuccess);
+
+  } catch (err) {
+    console.error(err);
+    errorMessage.textContent = err?.message || "Something went wrong.";
+    show(screenError);
+  }
+});
+
+
+// ----------------------------------------------
+// FAKE MODE PIPELINE  (FIXED VERSION)
+// ----------------------------------------------
+async function runFake() {
+
+  // a short delay so the spinner shows briefly (optional)
+  await new Promise(r => setTimeout(r, 600));
+
+  const file = fileInput.files[0];
+
+  // Set fake outputs
+  outputImage.src = URL.createObjectURL(file);
+  audioPlayer.src = FAKE_AUDIO;
+  metadataLink.href = FAKE_METADATA;
+
+  show(screenSuccess);   // ← IMPORTANT: SWITCH SCREEN
+}
+
 
   // ----------------------------------------------
   // RESET
