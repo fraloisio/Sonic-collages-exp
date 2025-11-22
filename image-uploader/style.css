@@ -1,106 +1,134 @@
 body {
   margin: 0;
-  background: #000;
-  color: #fff;
+  background: black;
   font-family: "Space Grotesk", sans-serif;
+  color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
-  overflow: hidden;
+  text-align: center;
 }
 
+/* Screens */
 .screen {
   display: none;
-  text-align: center;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
+  gap: 20px;
 }
 
 .screen.active {
-  display: block;
+  display: flex;
 }
 
 h1 {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  font-weight: 700;
+  font-size: 2.6rem;
+  margin-bottom: 10px;
 }
 
-.subtitle {
-  font-size: 1.2rem;
-  margin-bottom: 2rem;
-  opacity: 0.85;
-}
-
-.primary-btn {
-  background: #fff;
-  color: #000;
-  border: none;
-  padding: 14px 28px;
+p {
   font-size: 1.1rem;
-  font-weight: 600;
-  border-radius: 14px;
+  opacity: 0.8;
+}
+
+/* Upload Section */
+.upload-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+/* Input & Buttons */
+input,
+input[type="file"],
+button,
+.primary-btn {
+  font-family: "Space Grotesk", sans-serif !important;
+}
+
+input[type="file"] {
+  background: #111;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #444;
   cursor: pointer;
+  color: white;
+}
+
+/* Primary Button */
+.primary-btn {
+  background: white;
+  color: black;
+  border: none;
+  padding: 12px 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
   transition: 0.2s ease;
-  margin-top: 1.2rem;
 }
 
 .primary-btn:hover {
   background: #ddd;
 }
 
-.circle-image {
-  width: 320px;
-  height: 320px;
-  object-fit: cover;
+/* Circular Image */
+#output-image {
+  width: 340px;
+  height: 340px;
   border-radius: 50%;
-  margin-bottom: 1.8rem;
+  object-fit: cover;
   opacity: 0;
-  animation: fadeIn 1s ease forwards;
+  animation: fadeIn 1.3s forwards ease-out;
 }
 
 @keyframes fadeIn {
   to { opacity: 1; }
 }
 
-.title {
-  font-size: 1.6rem;
-  margin-bottom: 1.4rem;
-  font-weight: 600;
+/* Title Filename */
+#title-text {
+  font-size: 1.4rem;
+  margin-top: 4px;
+  padding: 0 30px;
+  word-break: break-word;
 }
 
+/* Audio Player */
 audio {
-  width: 60%;
-  margin: 0 auto;
-  display: block;
-  margin-bottom: 1.6rem;
+  width: 70%;
+  margin-top: 10px;
 }
 
-.metadata-link {
-  display: block;
-  margin-top: 0.5rem;
+/* Metadata Link */
+#metadata-link {
+  font-size: 0.75rem;
   opacity: 0.7;
-  font-size: 0.85rem;
 }
 
-.fake-toggle {
-  margin-top: 1.6rem;
-  font-size: 0.85rem;
-  opacity: 0.8;
+#metadata-link:hover {
+  opacity: 1;
 }
 
+/* Fake Mode Toggle */
+#fake-toggle-container {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+/* Loader Spinner */
 .loader {
-  width: 80px;
-  height: 80px;
-  border: 10px solid #333;
-  border-top: 10px solid #fff;
+  border: 6px solid #333;
+  border-top: 6px solid white;
   border-radius: 50%;
-  margin: auto;
+  width: 50px;
+  height: 50px;
   animation: spin 1s linear infinite;
-  margin-bottom: 2rem;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
