@@ -3,7 +3,7 @@ import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.m
 document.addEventListener("DOMContentLoaded", () => {
 
   // ----------------------------------------------
-  // FAKE MODE TOGGLE SYSTEM (synced both screens)
+  // FAKE MODE TOGGLE SYSTEM
   // ----------------------------------------------
   let FAKE_MODE = localStorage.getItem("FAKE_MODE") === "true";
 
@@ -23,8 +23,10 @@ document.addEventListener("DOMContentLoaded", () => {
   toggle1.addEventListener("change", () => syncFakeMode(toggle1.checked));
   toggle2.addEventListener("change", () => syncFakeMode(toggle2.checked));
 
+
   const FAKE_AUDIO = "fake/fake-audio.mp3";
   const FAKE_METADATA = "fake/fake-metadata.txt";
+
 
   // ----------------------------------------------
   // DOM
@@ -46,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const titleText = document.getElementById("title-text");
   const errorMessage = document.getElementById("error-message");
 
+
   // ----------------------------------------------
   function show(screen) {
     [Supload, Sload, Ssuccess, Serror].forEach(s => s.classList.remove("active"));
@@ -64,10 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  function getFilename(file) {
-    if (!file?.name) return "Untitled";
-    return file.name.replace(/\.[^/.]+$/, "");
-  }
 
   // ----------------------------------------------
   // Generate (REAL + FAKE)
@@ -83,21 +82,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const file = fileInput.files[0];
 
-    // Fake
     if (FAKE_MODE) return runFake(file);
 
-    // Real
+    // REAL MODE
     try {
       const client = await Client.connect("Hope-and-Despair/Stable-Audio-freestyle-new-experiments");
+
       const uploaded = await client.upload(file);
-      const result = await client.predict("/pipeline_from_image", { image: uploaded });
+
+      const result = await client.predict("/pipeline_from_image", {
+        image: uploaded,
+      });
 
       const [audioRes, metaRes] = result.data;
 
+      const metadataUrl = toUrl(metaRes);
+      const metadataTxt = await fetch(metadataUrl).then(r => r.text());
+
+      // FIRST LINE of metadata = AI title
+      const generatedName = metadataTxt.split("\n")[0].trim();
+
+      // UI
       outputImage.src = URL.createObjectURL(file);
       audioPlayer.src = toUrl(audioRes);
-      metadataLink.href = toUrl(metaRes);
-      titleText.textContent = getFilename(file);
+      metadataLink.href = metadataUrl;
+
+      titleText.textContent = generatedName || "Soundscape";
 
       show(Ssuccess);
 
@@ -108,19 +118,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Fake generation
+
+  // ----------------------------------------------
+  // FAKE MODE
+  // ----------------------------------------------
   async function runFake(file) {
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 300));
 
     outputImage.src = URL.createObjectURL(file);
     audioPlayer.src = FAKE_AUDIO;
     metadataLink.href = FAKE_METADATA;
-    titleText.textContent = getFilename(file);
+    titleText.textContent = "Generated Soundscape";
 
     show(Ssuccess);
   }
 
-  // Reset
+
+  // ----------------------------------------------
+  // RESET
+  // ----------------------------------------------
   function reset() {
     outputImage.src = "";
     audioPlayer.src = "";
@@ -133,4 +149,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btnBack.addEventListener("click", () => { reset(); show(Supload); });
   btnErrorBack.addEventListener("click", () => { reset(); show(Supload); });
+
 });

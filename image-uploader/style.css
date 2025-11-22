@@ -10,19 +10,13 @@ body {
   text-align: center;
 }
 
-button {
-  font-family: "Space Grotesk", sans-serif;
-}
-
 /* Screens */
 .screen {
   display: none;
   flex-direction: column;
   align-items: center;
-  width: 90%; 
-  max-width: 500px; /* Consistent max-width for modern feel */
-  gap: 30px; /* Increased general spacing */
-  padding: 20px;
+  width: 100%;
+  gap: 20px;
 }
 
 .screen.active {
@@ -30,13 +24,13 @@ button {
 }
 
 h1 {
-  font-size: 2.8rem; /* Slightly larger title */
-  margin-bottom: 5px;
+  font-size: 2.6rem;
+  margin-bottom: 10px;
 }
 
 p {
-  font-size: 1.15rem; /* Slightly larger text */
-  opacity: 0.85;
+  font-size: 1.1rem;
+  opacity: 0.8;
 }
 
 /* Upload Section */
@@ -44,61 +38,46 @@ p {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px; /* Increased spacing in the box */
-  width: 100%;
+  gap: 15px;
 }
 
-/* File Input styling */
+/* Input & Buttons */
+input,
+input[type="file"],
+button,
+.primary-btn {
+  font-family: "Space Grotesk", sans-serif !important;
+}
+
 input[type="file"] {
-  background: #111; /* Original dark background */
-  padding: 16px 20px; /* Increased padding for modern size */
-  border-radius: 10px;
-  border: none; /* BORDER REMOVED */
+  background: #111;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #444;
   cursor: pointer;
   color: white;
-  width: 100%;
-  box-sizing: border-box; 
-  font-size: 1rem;
-  transition: background-color 0.2s ease;
 }
 
-input[type="file"]:hover {
-  background-color: #222; /* Subtle feedback on hover */
-}
-
-input[type="file"]:focus {
-  outline: none;
-}
-
-
-/* Primary Button - Reverting to Original White */
+/* Primary Button */
 .primary-btn {
-  background: white; /* CORRECTED: Back to original white color */
+  background: white;
   color: black;
   border: none;
-  padding: 15px 32px; /* Increased padding for a larger, more modern button */
-  border-radius: 10px;
+  padding: 12px 26px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 1.1rem; 
-  font-weight: 500;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-  width: 100%;
-  box-sizing: border-box;
-  font-family: "Space Grotesk", sans-serif; /* CORRECTED: Explicitly set font */
+  font-size: 1rem;
+  transition: 0.2s ease;
 }
 
 .primary-btn:hover {
-  background: #ddd; /* Back to original hover state */
-}
-
-.primary-btn:active {
-  transform: scale(0.98);
+  background: #ddd;
 }
 
 /* Circular Image */
 #output-image {
-  width: 280px; 
-  height: 280px;
+  width: 340px;
+  height: 340px;
   border-radius: 50%;
   object-fit: cover;
   opacity: 0;
@@ -111,37 +90,36 @@ input[type="file"]:focus {
 
 /* Title Filename */
 #title-text {
-  font-size: 1.7rem;
-  margin-top: 10px;
+  font-size: 1.4rem;
+  margin-top: 4px;
+  padding: 0 30px;
+  word-break: break-word;
 }
 
 /* Audio Player */
 audio {
-  width: 100%;
+  width: 70%;
   margin-top: 10px;
 }
 
-/* Metadata */
+/* Metadata Link */
 #metadata-link {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   opacity: 0.7;
-  color: white;
-  text-decoration: none;
 }
 
 #metadata-link:hover {
   opacity: 1;
-  text-decoration: underline;
 }
 
 /* Fake Mode Toggle */
 #fake-toggle-container {
-  margin-top: 15px;
+  margin-top: 10px;
   font-size: 0.85rem;
   opacity: 0.7;
 }
 
-/* Spinner */
+/* Loader Spinner */
 .loader {
   border: 6px solid #333;
   border-top: 6px solid white;
