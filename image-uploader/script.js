@@ -2,18 +2,11 @@ import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.m
 
 document.addEventListener("DOMContentLoaded", () => {
 
-  // ----------------------------------------------
-  // TOGGLE: turn fake mode on/off
-  // ----------------------------------------------
-  const FAKE_MODE = false; // ← set true/false manually
+  const FAKE_MODE = false; // toggle ON/OFF
 
-  // Optional placeholder assets ONLY used when FAKE_MODE = true
   const FAKE_AUDIO = "fake/fake-audio.mp3";
   const FAKE_METADATA = "fake/fake-metadata.txt";
 
-  // ----------------------------------------------
-  // DOM elements
-  // ----------------------------------------------
   const screenUpload = document.getElementById("screen-upload");
   const screenLoading = document.getElementById("screen-loading");
   const screenSuccess = document.getElementById("screen-success");
@@ -29,9 +22,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const outputImage = document.getElementById("output-image");
   const errorMessage = document.getElementById("error-message");
 
-  // ----------------------------------------------
-  // Helper: switch UI screens
-  // ----------------------------------------------
   function show(screen) {
     screenUpload.classList.remove("active");
     screenLoading.classList.remove("active");
@@ -40,129 +30,72 @@ document.addEventListener("DOMContentLoaded", () => {
     screen.classList.add("active");
   }
 
-  // ----------------------------------------------
-  // Helper: normalize API outputs to usable URLs
-  // ----------------------------------------------
-  function toUrl(output) {
-    if (!output) return "";
-    if (typeof output === "string") return output;
-
-    // Common shapes returned by Gradio client
-    if (output.url) return output.url;
-    if (output.path) return output.path;
-    if (output.name) return output.name;
-    if (output.orig_name) return output.orig_name;
-
-    // Blob/File
-    if (output instanceof Blob || output instanceof File) {
-      return URL.createObjectURL(output);
-    }
-
-    if (output.data && (output.data instanceof Blob)) {
-      return URL.createObjectURL(output.data);
-    }
-
-    return "";
-  }
-
-  // ----------------------------------------------
-  // Main click: GENERATE AUDIO
-  // ----------------------------------------------
   btnGenerate.addEventListener("click", async () => {
+    const file = fileInput.files[0];
 
-    if (!fileInput.files.length) {
-      alert("Please upload an image first.");
+    if (!file) {
+      alert("Upload an image first");
       return;
     }
 
     show(screenLoading);
 
-    // ---------- FAKE MODE ----------
     if (FAKE_MODE) {
-      return runFakeMode();
+      return runFakeMode(file);
     }
 
-    // ---------- REAL MODE ----------
     try {
       const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
       const client = await Client.connect(HF_SPACE);
 
-      const file = fileInput.files?.[0];
-      if (!(file instanceof File) || !file.size) {
-        throw new Error("No image file selected or file is empty.");
-      }
-      const uploadedImage = await client.upload(file); // ensure the file is available to the Space
+      // Upload safely without reading .size
+      const formData = { image: file };
 
-      const result = await client.predict("/pipeline_from_image", {
-        image: uploadedImage,
-      });
-
-      const [audioResult, metadataResult] = result.data;
-      const audioUrl = toUrl(audioResult);
-      const metadataUrl = toUrl(metadataResult);
-
-      if (!audioUrl || !metadataUrl) {
-        throw new Error("API did not return audio/metadata URLs.");
+      let result;
+      try {
+        result = await client.predict("/pipeline_from_image", formData);
+      } catch (uploadErr) {
+        console.error("UPLOAD FAILED:", uploadErr);
+        throw new Error("Upload failed. Try another image.");
       }
 
-      // Set outputs
+      if (!result || !result.data || result.data.length < 2) {
+        console.error("BAD RESULT:", result);
+        throw new Error(result?.message || "Server returned invalid response.");
+      }
+
+      const [audioUrl, metadataUrl] = result.data;
+
       outputImage.src = URL.createObjectURL(file);
       audioPlayer.src = audioUrl;
-      audioPlayer.load();
       metadataLink.href = metadataUrl;
 
       show(screenSuccess);
 
     } catch (err) {
-      const friendly =
-        err?.response?.error ||
-        err?.error ||
-        err?.message ||
-        "Something went wrong. Try again.";
-      console.error("Generation error:", err);
-      errorMessage.textContent = friendly;
+      console.error("GENERATION ERROR:", err);
+      errorMessage.textContent = err?.message || "Something failed. Try again.";
       show(screenError);
     }
   });
 
-  // ----------------------------------------------
-  // FAKE MODE generator
-  // ----------------------------------------------
-  async function runFakeMode() {
+  async function runFakeMode(file) {
+    await new Promise((res) => setTimeout(res, 800));
 
-    // simulate loading delay
-    await new Promise((res) => setTimeout(res, 1000));
-
-    // preview the uploaded image
-    const file = fileInput.files[0];
     outputImage.src = URL.createObjectURL(file);
-
     audioPlayer.src = FAKE_AUDIO;
     metadataLink.href = FAKE_METADATA;
 
     show(screenSuccess);
   }
 
-  // ----------------------------------------------
-  // Back buttons
-  // ----------------------------------------------
-  function resetUi() {
-    outputImage.src = "";
-    audioPlayer.src = "";
-    audioPlayer.load();
-    metadataLink.removeAttribute("href");
-    fileInput.value = "";
-    errorMessage.textContent = "";
-  }
-
   btnBack.addEventListener("click", () => {
-    resetUi();
+    outputImage.src = "";
     show(screenUpload);
   });
 
   btnErrorBack.addEventListener("click", () => {
-    resetUi();
+    outputImage.src = "";
     show(screenUpload);
   });
-
 });
