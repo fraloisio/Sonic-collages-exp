@@ -15,9 +15,9 @@ body {
   display: none;
   flex-direction: column;
   align-items: center;
-  width: 90%;
-  max-width: 500px;
-  gap: 30px;
+  width: 90%; 
+  max-width: 500px; /* Consistent max-width for modern feel */
+  gap: 30px; /* Increased general spacing */
   padding: 20px;
 }
 
@@ -26,12 +26,12 @@ body {
 }
 
 h1 {
-  font-size: 2.8rem;
+  font-size: 2.8rem; /* Slightly larger title */
   margin-bottom: 5px;
 }
 
 p {
-  font-size: 1.15rem;
+  font-size: 1.15rem; /* Slightly larger text */
   opacity: 0.85;
 }
 
@@ -40,43 +40,42 @@ p {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 20px; /* Increased spacing in the box */
   width: 100%;
 }
 
 /* File Input styling */
 input[type="file"] {
-  background: #181818; 
-  padding: 16px 20px;
+  background: #111; /* Kept original dark background */
+  padding: 16px 20px; /* Increased padding for modern size */
   border-radius: 10px;
-  border: none; /* BORDER REMOVED HERE */
+  border: none; /* BORDER REMOVED */
   cursor: pointer;
   color: white;
   width: 100%;
-  box-sizing: border-box;
+  box-sizing: border-box; 
   font-size: 1rem;
   transition: background-color 0.2s ease;
 }
 
 input[type="file"]:hover {
-  background-color: #252525; /* Slight background shift on hover for feedback */
+  background-color: #222; /* Subtle feedback on hover */
 }
 
 input[type="file"]:focus {
   outline: none;
-  /* Removed border-color focus effect since the border is gone */
 }
 
-/* Primary Button - Vibrant Blue Theme */
+
+/* Primary Button - Reverting to Original White */
 .primary-btn {
-  /* Vibrant Blue for "live colour" feel */
-  background: #007bff;
-  color: white;
+  background: white; /* Back to original color */
+  color: black;
   border: none;
-  padding: 15px 32px;
+  padding: 15px 32px; /* Increased padding for a larger, more modern button */
   border-radius: 10px;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 1.1rem; 
   font-weight: 500;
   transition: background-color 0.2s ease, transform 0.1s ease;
   width: 100%;
@@ -84,7 +83,7 @@ input[type="file"]:focus {
 }
 
 .primary-btn:hover {
-  background: #0056b3;
+  background: #ddd; /* Back to original hover state */
 }
 
 .primary-btn:active {
@@ -93,7 +92,7 @@ input[type="file"]:focus {
 
 /* Circular Image */
 #output-image {
-  width: 280px;
+  width: 280px; 
   height: 280px;
   border-radius: 50%;
   object-fit: cover;
@@ -121,7 +120,7 @@ audio {
 #metadata-link {
   font-size: 0.85rem;
   opacity: 0.7;
-  color: #007bff;
+  color: white; /* Keeping text white/default */
   text-decoration: none;
 }
 
@@ -140,7 +139,7 @@ audio {
 /* Spinner */
 .loader {
   border: 6px solid #333;
-  border-top: 6px solid #007bff;
+  border-top: 6px solid white; /* Spinner color back to white */
   border-radius: 50%;
   width: 50px;
   height: 50px;
