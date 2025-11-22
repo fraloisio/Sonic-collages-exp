@@ -77,9 +77,39 @@ document.addEventListener("DOMContentLoaded", () => {
         "Hope-and-Despair/Stable-Audio-freestyle-new-experiments"
       );
 
-      const result = await client.predict("/pipeline_from_image", {
-        image: file,
-      });
+   const job = await client.submit(
+  "/pipeline_from_image",
+  { image: file },
+  null   // optional event handler
+);
+
+// subscribe to events
+for await (const event of job) {
+  if (event.type === "status") {
+    console.log("STATUS:", event.stage, event.message);
+
+    if (event.queue_position !== undefined) {
+      loadingText.textContent = `In queue… position ${event.queue_position}`;
+    }
+  }
+
+  if (event.type === "progress") {
+    console.log("PROGRESS:", event);
+    loadingText.textContent = `Generating… ${Math.round(event.progress * 100)}%`;
+  }
+
+    if (event.type === "data") {
+      const [audioResult, metadataResult] = event.data;
+      const audioUrl = toUrl(audioResult);
+      const metadataUrl = toUrl(metadataResult);
+
+      outputImage.src = URL.createObjectURL(file);
+      audioPlayer.src = audioUrl;
+      audioPlayer.load();
+      metadataLink.href = metadataUrl;
+
+      show(screenSuccess);
+    }};
 
       if (!result || !result.data || result.data.length < 2) {
         console.error("BAD RESULT:", result);
