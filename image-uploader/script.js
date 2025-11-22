@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const HF_SPACE = "Hope-and-Despair/Stable-Audio-freestyle-new-experiments";
       const client = await Client.connect(HF_SPACE);
 
-      const uploaded = await client.upload(file);
+      const uploaded = await client.upload([file]);
 
       if (!uploaded) throw new Error("Upload failed: no file returned from client.upload");
 
