@@ -3,33 +3,39 @@ import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.m
 document.addEventListener("DOMContentLoaded", () => {
 
   // ----------------------------------------------
-  // Fake Mode Toggle
+  // FAKE MODE TOGGLE SYSTEM (synced both screens)
   // ----------------------------------------------
-  let FAKE_MODE = false;
-  const fakeToggle = document.getElementById("fake-toggle");
+  let FAKE_MODE = localStorage.getItem("FAKE_MODE") === "true";
 
-  // restore
-  FAKE_MODE = localStorage.getItem("FAKE_MODE") === "true";
-  fakeToggle.checked = FAKE_MODE;
+  const toggle1 = document.getElementById("fake-toggle");
+  const toggle2 = document.getElementById("fake-toggle-2");
 
-  // save on change
-  fakeToggle.addEventListener("change", () => {
-    FAKE_MODE = fakeToggle.checked;
-    localStorage.setItem("FAKE_MODE", FAKE_MODE);
-  });
+  toggle1.checked = FAKE_MODE;
+  toggle2.checked = FAKE_MODE;
+
+  function syncFakeMode(value) {
+    FAKE_MODE = value;
+    localStorage.setItem("FAKE_MODE", value);
+    toggle1.checked = value;
+    toggle2.checked = value;
+  }
+
+  toggle1.addEventListener("change", () => syncFakeMode(toggle1.checked));
+  toggle2.addEventListener("change", () => syncFakeMode(toggle2.checked));
 
   const FAKE_AUDIO = "fake/fake-audio.mp3";
   const FAKE_METADATA = "fake/fake-metadata.txt";
 
   // ----------------------------------------------
-  // DOM ELEMENTS
+  // DOM
   // ----------------------------------------------
-  const screenUpload = document.getElementById("screen-upload");
-  const screenLoading = document.getElementById("screen-loading");
-  const screenSuccess = document.getElementById("screen-success");
-  const screenError = document.getElementById("screen-error");
+  const Supload = document.getElementById("screen-upload");
+  const Sload = document.getElementById("screen-loading");
+  const Ssuccess = document.getElementById("screen-success");
+  const Serror = document.getElementById("screen-error");
 
   const fileInput = document.getElementById("file-input");
+
   const btnGenerate = document.getElementById("btn-generate");
   const btnBack = document.getElementById("btn-back");
   const btnErrorBack = document.getElementById("btn-error-back");
@@ -41,17 +47,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const errorMessage = document.getElementById("error-message");
 
   // ----------------------------------------------
-  // UI helper
-  // ----------------------------------------------
   function show(screen) {
-    [screenUpload, screenLoading, screenSuccess, screenError]
-      .forEach(s => s.classList.remove("active"));
+    [Supload, Sload, Ssuccess, Serror].forEach(s => s.classList.remove("active"));
     screen.classList.add("active");
   }
 
-  // ----------------------------------------------
-  // Convert Gradio output → URL
-  // ----------------------------------------------
   function toUrl(x) {
     if (!x) return "";
     if (typeof x === "string") return x;
@@ -64,16 +64,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  // ----------------------------------------------
-  // Extract filename
-  // ----------------------------------------------
   function getFilename(file) {
-    if (!file || !file.name) return "Untitled";
-    return file.name.replace(/\.[^/.]+$/, ""); // remove extension
+    if (!file?.name) return "Untitled";
+    return file.name.replace(/\.[^/.]+$/, "");
   }
 
   // ----------------------------------------------
-  // REAL GENERATION
+  // Generate (REAL + FAKE)
   // ----------------------------------------------
   btnGenerate.addEventListener("click", async () => {
 
@@ -82,69 +79,58 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    show(screenLoading);
+    show(Sload);
 
     const file = fileInput.files[0];
 
-    // ----- FAKE MODE -----
-    if (FAKE_MODE) {
-      return runFake(file);
-    }
+    // Fake
+    if (FAKE_MODE) return runFake(file);
 
-    // ----- REAL MODE -----
+    // Real
     try {
       const client = await Client.connect("Hope-and-Despair/Stable-Audio-freestyle-new-experiments");
-
       const uploaded = await client.upload(file);
-
-      const result = await client.predict("/pipeline_from_image", {
-        image: uploaded
-      });
+      const result = await client.predict("/pipeline_from_image", { image: uploaded });
 
       const [audioRes, metaRes] = result.data;
 
+      outputImage.src = URL.createObjectURL(file);
       audioPlayer.src = toUrl(audioRes);
       metadataLink.href = toUrl(metaRes);
-      outputImage.src = URL.createObjectURL(file);
       titleText.textContent = getFilename(file);
 
-      show(screenSuccess);
+      show(Ssuccess);
 
     } catch (err) {
       console.error(err);
       errorMessage.textContent = err?.message || "Something went wrong.";
-      show(screenError);
+      show(Serror);
     }
   });
 
-  // ----------------------------------------------
-  // FAKE PIPELINE
-  // ----------------------------------------------
+  // Fake generation
   async function runFake(file) {
-    await new Promise(r => setTimeout(r, 500)); // tiny delay
+    await new Promise(r => setTimeout(r, 400));
 
     outputImage.src = URL.createObjectURL(file);
     audioPlayer.src = FAKE_AUDIO;
     metadataLink.href = FAKE_METADATA;
     titleText.textContent = getFilename(file);
 
-    show(screenSuccess);
+    show(Ssuccess);
   }
 
-  // ----------------------------------------------
-  // Reset UI
-  // ----------------------------------------------
-  function resetUi() {
+  // Reset
+  function reset() {
     outputImage.src = "";
     audioPlayer.src = "";
     audioPlayer.load();
-    metadataLink.removeAttribute("href");
-    fileInput.value = "";
+    metadataLink.href = "";
     titleText.textContent = "";
     errorMessage.textContent = "";
+    fileInput.value = "";
   }
 
-  btnBack.addEventListener("click", () => { resetUi(); show(screenUpload); });
-  btnErrorBack.addEventListener("click", () => { resetUi(); show(screenUpload); });
-
+  btnBack.addEventListener("click", () => { reset(); show(Supload); });
+  btnErrorBack.addEventListener("click", () => { reset(); show(Supload); });
 });
