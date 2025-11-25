@@ -48,7 +48,9 @@
     // CONFIG
     // ==============================
     const CONFIG = {
-      CSV_URL: "https://raw.githubusercontent.com/fraloisio/Sonic-collages-exp/refs/heads/main/records.csv",
+      USE_LOCAL: true, // toggle between local CSV/paths and remote
+      CSV_URL: "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv",
+      LOCAL_CSV: "./records.csv",
       REFRESH_INTERVAL_MS: 30_000,
       BASE_RADIUS_MIN: 20,
       BASE_RADIUS_MAX: 35,
@@ -371,16 +373,17 @@
       updateData(record) {
         this.title = record.title || this.title;
         this.description = record.description || this.description;
-        
         if (record.imageUrl && record.imageUrl !== this.imageUrl) {
           this.imageUrl = record.imageUrl;
           this.loadImageAndColors(record.imageUrl);
         }
-        
         if (record.audioUrl && record.audioUrl !== this.audioUrl) {
           this.audioManager?.cleanup();
           this.audioUrl = record.audioUrl;
           this.audioManager = new AudioManager(record.audioUrl);
+        }
+        if (record.textUrl) {
+          this.textUrl = record.textUrl;
         }
       }
 
@@ -477,9 +480,10 @@
     const DataManager = {
       async fetchRecords() {
         try {
-          const response = await fetch(`${CONFIG.CSV_URL}?t=${Date.now()}`);
+          const csvUrl = CONFIG.USE_LOCAL ? CONFIG.LOCAL_CSV : `${CONFIG.CSV_URL}?t=${Date.now()}`;
+          const response = await fetch(csvUrl);
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          
+
           const text = await response.text();
           const rows = CSVParser.parse(text);
           const records = this.transformRows(rows);
@@ -492,21 +496,44 @@
 
       transformRows(rows) {
         const records = {};
-        
+
+        const localPath = (p, folder) => {
+          if (!p) return "";
+          const parts = p.split("/");
+          const file = parts[parts.length - 1] || "";
+          return folder && file ? `${folder}/${file}` : file;
+        };
+
         rows.forEach(row => {
           const id = row.id?.trim();
           if (!id || !/^\d+/.test(id)) return;
+
+          const title = row.title?.trim() || "";
+          const imageLocal = row.image_local?.trim() || "";
+          const imageRemote = row.image_url?.trim() || "";
+          const audioLocal = row.audio_local?.trim() || "";
+          const audioRemote = row.audio_url?.trim() || "";
+          const textLocal = row.text_local?.trim() || "";
+          const textRemote = row.text_url?.trim() || "";
           
-          const descParts = [row.analysis, row.long_prompt]
-            .filter(p => p?.trim())
-            .map(p => p.trim());
-          
+          const useLocal = CONFIG.USE_LOCAL;
+          const imageUrl = useLocal
+            ? (localPath(imageLocal, "images") || imageRemote)
+            : (imageRemote || localPath(imageLocal, "images"));
+          const audioUrl = useLocal
+            ? (localPath(audioLocal, "audio") || audioRemote)
+            : (audioRemote || localPath(audioLocal, "audio"));
+          const textUrl  = useLocal
+            ? (localPath(textLocal, "texts")  || textRemote)
+            : (textRemote || localPath(textLocal, "texts"));
+
           records[id] = {
             id,
-            title: row.title?.trim() || "",
-            imageUrl: row.image_url?.trim() || "",
-            audioUrl: row.audio_url?.trim() || "",
-            description: descParts.join("\n\n")
+            title,
+            imageUrl,
+            audioUrl,
+            textUrl,
+            description: [row.analysis, row.long_prompt].filter(p => p?.trim()).map(p => p.trim()).join("\n\n")
           };
         });
         
