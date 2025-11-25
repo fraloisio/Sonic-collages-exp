@@ -11,12 +11,16 @@
       color: #fff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: hidden;
+      position: relative;
+    }
+    body::before,
+    body::after {
+      display: none;
     }
     #p5-container {
       position: fixed;
       inset: 0;
     }
-    /*test5*/
     .info-overlay {
       position: fixed;
       left: 1rem;
@@ -37,235 +41,325 @@
   </div>
   <div id="p5-container"></div>
 
-  <!-- p5.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 
   <script>
     // ==============================
     // CONFIG
     // ==============================
+    const CONFIG = {
+      CSV_URL: "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv",
+      REFRESH_INTERVAL_MS: 30_000,
+      BASE_RADIUS_MIN: 20,
+      BASE_RADIUS_MAX: 35,
+      EXPANDED_RADIUS: 225, // 450px diameter
+      FADE_DURATION_MS: 700,
+      LERP_SPEED: 0.1,
+      DRIFT_SPEED: { min: 0.08, max: 0.18 },
+      IMG_DRAW_SIZE: 600, // Fixed size for stable image rendering
+      GLOW_ALPHA: 0.14,
+      GLOW_RADIUS_MULTIPLIER: 2.1
+    };
 
-    // CSV on GitHub (public repo)
-    const CSV_URL =
-      "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv";
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const randomRange = (min, max) => min + Math.random() * (max - min);
 
-    const REFRESH_INTERVAL_MS = 30_000;
-    const BASE_RADIUS = 25;
-    const EXPANDED_RADIUS = 120;
-    const FADE_DURATION_MS = 700;
+    // ==============================
+    // STATE
+    // ==============================
+    const state = {
+      bubbles: [],
+      bubblesById: {},
+      p5Instance: null,
+      drag: { target: null, offsetX: 0, offsetY: 0, moved: false }
+    };
 
-    function lerp(a, b, t) {
-      return a + (b - a) * t;
+    // ==============================
+    // AUDIO MANAGER
+    // ==============================
+    class AudioManager {
+      constructor(url) {
+        this.audio = new Audio(url);
+        this.audio.loop = true;
+        this.audio.volume = 0;
+        this.fadeInterval = null;
+      }
+
+      fade(targetVolume, duration, onComplete) {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        
+        const startVolume = this.audio.volume;
+        const startTime = performance.now();
+        
+        this.fadeInterval = setInterval(() => {
+          const progress = Math.min(1, (performance.now() - startTime) / duration);
+          this.audio.volume = lerp(startVolume, targetVolume, progress);
+          
+          if (progress >= 1) {
+            clearInterval(this.fadeInterval);
+            this.fadeInterval = null;
+            if (onComplete) onComplete();
+          }
+        }, 40);
+      }
+
+      fadeIn(duration = CONFIG.FADE_DURATION_MS) {
+        this.audio.play().catch(err => console.warn("Audio play error:", err));
+        this.fade(1, duration);
+      }
+
+      fadeOut(duration = CONFIG.FADE_DURATION_MS) {
+        this.fade(0, duration, () => this.audio.pause());
+      }
+
+      cleanup() {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        this.audio.pause();
+      }
     }
 
     // ==============================
-    // DATA STRUCTURES
+    // IMAGE COLOR SAMPLER
     // ==============================
+    const ImageColorSampler = {
+      async sampleColors(url) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          
+          img.onload = () => {
+            try {
+              const colors = this.extractColors(img);
+              resolve(colors);
+            } catch (e) {
+              console.warn("Failed to sample colors:", e);
+              resolve(this.getDefaultColors());
+            }
+          };
+          
+          img.onerror = () => {
+            console.warn("Could not load image:", url);
+            resolve(this.getDefaultColors());
+          };
+          
+          img.src = url;
+        });
+      },
 
-    let bubbles = [];
-    let bubblesById = {};
-    let pRef = null; // hold p5 instance so Bubble can load images
+      extractColors(img) {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const size = 16;
+        
+        canvas.width = size;
+        canvas.height = size;
+        ctx.drawImage(img, 0, 0, size, size);
+        
+        const data = ctx.getImageData(0, 0, size, size).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        let maxBrightness = -1;
+        let brightest = [200, 200, 200];
+        
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+          
+          const brightness = data[i] + data[i + 1] + data[i + 2];
+          if (brightness > maxBrightness) {
+            maxBrightness = brightness;
+            brightest = [data[i], data[i + 1], data[i + 2]];
+          }
+        }
+        
+        const avg = [r / count, g / count, b / count];
+        const baseColor = avg.map(c => Math.min(255, Math.floor(c * 0.7 + 50)));
+        const glowColor = brightest.map(c => Math.min(255, Math.floor(c * 1.2)));
+        
+        return { baseColor, glowColor };
+      },
 
+      getDefaultColors() {
+        return {
+          baseColor: [200, 200, 255],
+          glowColor: [220, 220, 220]
+        };
+      }
+    };
+
+    // ==============================
+    // BUBBLE CLASS
+    // ==============================
     class Bubble {
       constructor(record) {
         this.id = record.id;
         this.title = record.title || "Untitled";
         this.description = record.description || "";
-        this.imageUrl = record.imageUrl || null;
-        this.audioUrl = record.audioUrl || null;
+        this.imageUrl = record.imageUrl;
+        this.audioUrl = record.audioUrl;
+        
         this.image = null;
+        this.audioManager = this.audioUrl ? new AudioManager(this.audioUrl) : null;
+        
+        this.baseColor = [200, 200, 255];
+        this.glowColor = [220, 220, 220];
+        
+        this.initializePosition();
+        this.initializeSize();
+        
+        this.expanded = false;
         this.imageAlpha = 0;
+        
+        if (this.imageUrl) {
+          this.loadImageAndColors(this.imageUrl);
+        }
+      }
 
+      initializePosition() {
         this.x = Math.random() * window.innerWidth;
         this.y = Math.random() * window.innerHeight;
-        const speed = 0.3 + Math.random() * 0.4;
         const angle = Math.random() * Math.PI * 2;
+        const speed = randomRange(CONFIG.DRIFT_SPEED.min, CONFIG.DRIFT_SPEED.max);
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
-
-        this.radius = BASE_RADIUS;
-        this.targetRadius = BASE_RADIUS;
-
-        this.baseColor = [200, 200, 255];
-        this.expanded = false;
-
-        this.audio = null;
-        this.fadeInterval = null;
-
-        if (this.imageUrl) {
-          this.loadAverageColorFromImage(this.imageUrl);
-          this.loadImage(this.imageUrl);
-        }
-        if (this.audioUrl) {
-          this.audio = new Audio(this.audioUrl);
-          this.audio.loop = true;
-          this.audio.volume = 0;
-        }
       }
 
-      loadAverageColorFromImage(url) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = url;
-        img.onload = () => {
-          try {
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d");
-            const w = 16, h = 16;
-            canvas.width = w;
-            canvas.height = h;
-            ctx.drawImage(img, 0, 0, w, h);
-            const data = ctx.getImageData(0, 0, w, h).data;
-            let r = 0, g = 0, b = 0, count = 0;
-            for (let i = 0; i < data.length; i += 4) {
-              r += data[i];
-              g += data[i + 1];
-              b += data[i + 2];
-              count++;
-            }
-            r = Math.floor(r / count);
-            g = Math.floor(g / count);
-            b = Math.floor(b / count);
-            const factor = 0.7;
-            this.baseColor = [
-              Math.min(255, Math.floor(r * factor + 50)),
-              Math.min(255, Math.floor(g * factor + 50)),
-              Math.min(255, Math.floor(b * factor + 50)),
-            ];
-          } catch (e) {
-            console.warn("Failed to sample image color", e);
-          }
-        };
-        img.onerror = () => {
-          console.warn("Could not load image for color", url);
-        };
+      initializeSize() {
+        const baseRadius = randomRange(CONFIG.BASE_RADIUS_MIN, CONFIG.BASE_RADIUS_MAX);
+        this.baseRadius = baseRadius;
+        this.radius = baseRadius;
+        this.targetRadius = baseRadius;
       }
 
-      loadImage(url) {
-        if (!pRef) return;
-        this.image = null;
-        this.imageAlpha = 0;
-        pRef.loadImage(
-          url,
-          img => {
-            this.image = img;
-          },
-          err => {
-            console.warn("Could not load bubble image", url, err);
-          }
-        );
+      async loadImageAndColors(url) {
+        const colors = await ImageColorSampler.sampleColors(url);
+        this.baseColor = colors.baseColor;
+        this.glowColor = colors.glowColor;
+        
+        if (state.p5Instance) {
+          state.p5Instance.loadImage(
+            url,
+            img => { this.image = img; },
+            err => console.warn("Could not load bubble image:", err)
+          );
+        }
       }
 
       setExpanded(expanded) {
         this.expanded = expanded;
-        this.targetRadius = expanded ? EXPANDED_RADIUS : BASE_RADIUS;
-        this.targetImageAlpha = expanded ? 255 : 0;
-        if (!this.audio) return;
+        this.targetRadius = expanded ? CONFIG.EXPANDED_RADIUS : this.baseRadius;
+        
         if (expanded) {
-          this.fadeInAudio();
+          this.bringToFront();
+          this.audioManager?.fadeIn();
         } else {
-          this.fadeOutAudio();
+          this.audioManager?.fadeOut();
         }
       }
 
-      fadeInAudio() {
-        if (!this.audio) return;
-        if (this.fadeInterval) clearInterval(this.fadeInterval);
-
-        this.audio.volume = 0;
-        this.audio.play().catch(err => console.warn("audio play error", err));
-
-        const start = performance.now();
-        this.fadeInterval = setInterval(() => {
-          const t = Math.min(1, (performance.now() - start) / FADE_DURATION_MS);
-          this.audio.volume = t;
-          if (t >= 1) {
-            clearInterval(this.fadeInterval);
-            this.fadeInterval = null;
-          }
-        }, 40);
-      }
-
-      fadeOutAudio() {
-        if (!this.audio) return;
-        if (this.fadeInterval) clearInterval(this.fadeInterval);
-
-        const startVol = this.audio.volume;
-        const start = performance.now();
-        this.fadeInterval = setInterval(() => {
-          const t = Math.min(1, (performance.now() - start) / FADE_DURATION_MS);
-          this.audio.volume = startVol * (1 - t);
-          if (t >= 1) {
-            clearInterval(this.fadeInterval);
-            this.fadeInterval = null;
-            this.audio.pause();
-          }
-        }, 40);
+      bringToFront() {
+        const idx = state.bubbles.indexOf(this);
+        if (idx >= 0) {
+          state.bubbles.splice(idx, 1);
+          state.bubbles.push(this);
+        }
       }
 
       update() {
+        this.updatePosition();
+        this.updateAppearance();
+      }
+
+      updatePosition() {
         this.x += this.vx;
         this.y += this.vy;
-
+        
         const margin = this.radius + 10;
+        const { innerWidth: w, innerHeight: h } = window;
+        
         if (this.x < margin) { this.x = margin; this.vx *= -1; }
-        if (this.x > window.innerWidth - margin) { this.x = window.innerWidth - margin; this.vx *= -1; }
+        if (this.x > w - margin) { this.x = w - margin; this.vx *= -1; }
         if (this.y < margin) { this.y = margin; this.vy *= -1; }
-        if (this.y > window.innerHeight - margin) { this.y = window.innerHeight - margin; this.vy *= -1; }
+        if (this.y > h - margin) { this.y = h - margin; this.vy *= -1; }
+      }
 
-        this.radius = lerp(this.radius, this.targetRadius, 0.1);
-        this.imageAlpha = lerp(this.imageAlpha, this.expanded ? 255 : 0, 0.1);
+      updateAppearance() {
+        this.radius = lerp(this.radius, this.targetRadius, CONFIG.LERP_SPEED);
+        // Snap to target when very close to prevent endless micro-adjustments
+        if (Math.abs(this.radius - this.targetRadius) < 0.5) {
+          this.radius = this.targetRadius;
+        }
+        this.imageAlpha = lerp(this.imageAlpha, this.expanded ? 255 : 0, CONFIG.LERP_SPEED);
       }
 
       draw(p) {
-        const [r, g, b] = this.baseColor;
+        this.drawGlow(p);
+        this.drawCircle(p);
+        if (this.expanded) this.drawLabel(p);
+      }
 
-        p.noStroke();
-        p.fill(r, g, b, this.expanded ? 80 : 40);
-        p.circle(this.x, this.y, this.radius * 2.5);
+      drawGlow(p) {
+        if (this.expanded) return;
+        
+        p.push();
+        p.translate(this.x, this.y);
+        p.blendMode(p.SCREEN);
+        
+        const ctx = p.drawingContext;
+        const outerRadius = this.radius * CONFIG.GLOW_RADIUS_MULTIPLIER * 1.26;
+        const gradient = ctx.createRadialGradient(0, 0, this.radius * 1.05, 0, 0, outerRadius);
+        
+        const [r, g, b] = this.glowColor;
+        gradient.addColorStop(0, `rgba(${r},${g},${b},${CONFIG.GLOW_ALPHA * 0.8})`);
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, outerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        p.pop();
+      }
 
-        p.fill(r, g, b, this.expanded ? 230 : 180);
-        p.circle(this.x, this.y, this.radius * 2);
+      drawCircle(p) {
+        p.push();
+        p.translate(this.x, this.y);
+        p.blendMode(p.BLEND);
+        
+        const ctx = p.drawingContext;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.clip();
 
-        if (this.image && this.imageAlpha > 1 && this.expanded) {
-          p.push();
-          p.translate(this.x, this.y);
-          p.tint(255, this.imageAlpha);
-          const imgSize = this.radius * 2 * 0.95;
-          const ctx = p.drawingContext;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(0, 0, imgSize / 2, 0, Math.PI * 2);
-          ctx.clip();
+        if (this.image) {
+          p.blendMode(p.SCREEN);
+          // Scale image to fully cover the circle (cover fit) with a small overdraw
           const iw = this.image.width;
           const ih = this.image.height;
-          const scale = Math.max(imgSize / iw, imgSize / ih);
-          const drawW = iw * scale;
-          const drawH = ih * scale;
-          p.image(this.image, -drawW / 2, -drawH / 2, drawW, drawH);
-          ctx.restore();
-          p.pop();
+          const target = this.radius * 2 * 1.1;
+          const scale = Math.max(target / iw, target / ih);
+          const w = iw * scale;
+          const h = ih * scale;
+          p.image(this.image, -w / 2, -h / 2, w, h);
+        } else {
+          p.blendMode(p.BLEND);
+          const [r, g, b] = this.baseColor;
+          const alpha = this.expanded ? 240 : 220;
+          p.fill(r, g, b, alpha);
+          p.circle(0, 0, this.radius * 2);
         }
+        
+        ctx.restore();
+        p.pop();
+      }
 
-        if (this.expanded) {
-          p.fill(255);
-          p.textAlign(p.CENTER, p.TOP);
-          p.textSize(14);
-          p.text(this.title, this.x, this.y + this.radius + 10);
-
-          if (this.description) {
-            p.textSize(11);
-            p.fill(200);
-            const maxWidth = 260;
-            p.text(
-              this.description,
-              this.x - maxWidth / 2,
-              this.y + this.radius + 28,
-              maxWidth,
-              200
-            );
-          }
-        }
+      drawLabel(p) {
+        p.fill(255);
+        p.textAlign(p.CENTER, p.TOP);
+        p.textSize(14);
+        p.text(this.title, this.x, this.y + this.radius + 10);
       }
 
       hitTest(px, py) {
@@ -273,185 +367,236 @@
         const dy = py - this.y;
         return dx * dx + dy * dy <= this.radius * this.radius;
       }
+
+      updateData(record) {
+        this.title = record.title || this.title;
+        this.description = record.description || this.description;
+        
+        if (record.imageUrl && record.imageUrl !== this.imageUrl) {
+          this.imageUrl = record.imageUrl;
+          this.loadImageAndColors(record.imageUrl);
+        }
+        
+        if (record.audioUrl && record.audioUrl !== this.audioUrl) {
+          this.audioManager?.cleanup();
+          this.audioUrl = record.audioUrl;
+          this.audioManager = new AudioManager(record.audioUrl);
+        }
+      }
+
+      cleanup() {
+        this.audioManager?.cleanup();
+      }
     }
 
     // ==============================
-    // CSV FETCH + PARSE
+    // CSV PARSER
     // ==============================
+    const CSVParser = {
+      parse(text) {
+        const lines = this.splitLines(text);
+        if (lines.length === 0) return [];
+        
+        const headers = this.parseRow(lines[0]).map(h => h.trim().toLowerCase());
+        const rows = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          const cols = this.parseRow(lines[i]);
+          const row = {};
+          headers.forEach((h, idx) => {
+            row[h] = cols[idx] || "";
+          });
+          rows.push(row);
+        }
+        
+        return rows;
+      },
 
-    function parseCSV(text) {
-      const lines = [];
-      let currentLine = "";
-      let inQuotes = false;
-
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === '"') {
-          const next = text[i + 1];
-          currentLine += ch;
-          if (inQuotes && next === '"') {
-            currentLine += next;
-            i++;
+      splitLines(text) {
+        const lines = [];
+        let currentLine = "";
+        let inQuotes = false;
+        
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          
+          if (ch === '"') {
+            currentLine += ch;
+            if (inQuotes && text[i + 1] === '"') {
+              currentLine += text[++i];
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === "\n" && !inQuotes) {
+            lines.push(currentLine.replace(/\r$/, ""));
+            currentLine = "";
           } else {
-            inQuotes = !inQuotes;
+            currentLine += ch;
           }
-        } else if (ch === "\n" && !inQuotes) {
+        }
+        
+        if (currentLine.trim()) {
           lines.push(currentLine.replace(/\r$/, ""));
-          currentLine = "";
-        } else {
-          currentLine += ch;
         }
-      }
-      if (currentLine.trim() !== "") {
-        lines.push(currentLine.replace(/\r$/, ""));
-      }
+        
+        return lines;
+      },
 
-      if (lines.length === 0) return [];
-
-      const header = parseCSVRow(lines[0]).map(h => h.trim().toLowerCase());
-      const rows = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        const cols = parseCSVRow(lines[i]);
-        const rowObj = {};
-        header.forEach((h, idx) => {
-          rowObj[h] = cols[idx] !== undefined ? cols[idx] : "";
-        });
-        rows.push(rowObj);
-      }
-      return rows;
-    }
-
-    function parseCSVRow(line) {
-      const result = [];
-      let current = "";
-      let inQuotes = false;
-
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') {
-          if (inQuotes && line[i + 1] === '"') {
-            current += '"';
-            i++;
+      parseRow(line) {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === ',' && !inQuotes) {
+            result.push(current);
+            current = "";
           } else {
-            inQuotes = !inQuotes;
+            current += ch;
           }
-        } else if (ch === ',' && !inQuotes) {
-          result.push(current);
-          current = "";
-        } else {
-          current += ch;
         }
+        
+        result.push(current);
+        return result;
       }
-      result.push(current);
-      return result;
-    }
+    };
 
-    async function fetchRecords() {
-      try {
-        const res = await fetch(CSV_URL + "?t=" + Date.now());
-        if (!res.ok) {
-          console.error("Failed to fetch CSV", res.status);
-          return;
+    // ==============================
+    // DATA MANAGER
+    // ==============================
+    const DataManager = {
+      async fetchRecords() {
+        try {
+          const response = await fetch(`${CONFIG.CSV_URL}?t=${Date.now()}`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          
+          const text = await response.text();
+          const rows = CSVParser.parse(text);
+          const records = this.transformRows(rows);
+          
+          this.syncBubbles(records);
+        } catch (error) {
+          console.error("Error fetching CSV:", error);
         }
-        const text = await res.text();
-        const rows = parseCSV(text);
+      },
 
-        const newRecordsById = {};
-
+      transformRows(rows) {
+        const records = {};
+        
         rows.forEach(row => {
-          const h = Object.keys(row).reduce((acc, k) => {
-            acc[k.toLowerCase()] = row[k];
-            return acc;
-          }, {});
-
-          let id = (h.id || "").trim();
-          if (!id) return;
-          if (!/^\d+/.test(id)) return;
-
-          const title = (h.title || "").trim();
-
-          const imageUrl = (h.image_url || "").trim();
-          const audioUrl = (h.audio_url || "").trim();
-
-          let descriptionParts = [];
-          if (h.analysis && h.analysis.trim() !== "") {
-            descriptionParts.push(h.analysis.trim());
-          }
-          if (h.long_prompt && h.long_prompt.trim() !== "") {
-            descriptionParts.push(h.long_prompt.trim());
-          }
-          const description = descriptionParts.join("\n\n");
-
-          newRecordsById[id] = {
+          const id = row.id?.trim();
+          if (!id || !/^\d+/.test(id)) return;
+          
+          const descParts = [row.analysis, row.long_prompt]
+            .filter(p => p?.trim())
+            .map(p => p.trim());
+          
+          records[id] = {
             id,
-            title,
-            imageUrl,
-            audioUrl,
-            description
+            title: row.title?.trim() || "",
+            imageUrl: row.image_url?.trim() || "",
+            audioUrl: row.audio_url?.trim() || "",
+            description: descParts.join("\n\n")
           };
-
-          console.log("Loaded record:", id, { title, imageUrl, audioUrl });
         });
+        
+        return records;
+      },
 
-        syncBubblesWithRecords(newRecordsById);
-      } catch (e) {
-        console.error("Error fetching CSV", e);
-      }
-    }
-
-    function syncBubblesWithRecords(recordsById) {
-      bubbles = bubbles.filter(b => {
-        if (!recordsById[b.id]) {
-          if (b.audio) b.fadeOutAudio();
-          delete bubblesById[b.id];
-          return false;
+      syncBubbles(records) {
+        // Remove deleted bubbles
+        state.bubbles = state.bubbles.filter(bubble => {
+          if (!records[bubble.id]) {
+            bubble.cleanup();
+            delete state.bubblesById[bubble.id];
+            return false;
+          }
+          return true;
+        });
+        
+        // Update or create bubbles
+        for (const id in records) {
+          const record = records[id];
+          
+          if (state.bubblesById[id]) {
+            state.bubblesById[id].updateData(record);
+          } else {
+            const bubble = new Bubble(record);
+            state.bubbles.push(bubble);
+            state.bubblesById[id] = bubble;
+          }
         }
-        return true;
-      });
+        
+        console.log(`Synced bubbles: ${state.bubbles.length}`);
+      }
+    };
 
-      for (const id in recordsById) {
-        const rec = recordsById[id];
-        if (bubblesById[id]) {
-          const b = bubblesById[id];
-          b.title = rec.title || b.title;
-          b.description = rec.description || b.description;
+    // ==============================
+    // INTERACTION HANDLERS
+    // ==============================
+    const InteractionHandler = {
+      onMousePressed(p) {
+        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false };
+        
+        for (let i = state.bubbles.length - 1; i >= 0; i--) {
+          const bubble = state.bubbles[i];
+          if (bubble.hitTest(p.mouseX, p.mouseY)) {
+            state.drag.target = bubble;
+            state.drag.offsetX = p.mouseX - bubble.x;
+            state.drag.offsetY = p.mouseY - bubble.y;
+            break;
+          }
+        }
+      },
 
-          if (rec.imageUrl && rec.imageUrl !== b.imageUrl) {
-            b.imageUrl = rec.imageUrl;
-            b.loadAverageColorFromImage(rec.imageUrl);
-            b.loadImage(rec.imageUrl);
-          }
-          if (rec.audioUrl && rec.audioUrl !== b.audioUrl) {
-            b.audioUrl = rec.audioUrl;
-            if (b.audio) b.audio.pause();
-            b.audio = new Audio(rec.audioUrl);
-            b.audio.loop = true;
-            b.audio.volume = 0;
-          }
+      onMouseDragged(p) {
+        if (state.drag.target) {
+          state.drag.moved = true;
+          state.drag.target.x = p.mouseX - state.drag.offsetX;
+          state.drag.target.y = p.mouseY - state.drag.offsetY;
+          state.drag.target.vx = 0;
+          state.drag.target.vy = 0;
+        }
+      },
+
+      onMouseReleased() {
+        if (!state.drag.target) return;
+        
+        if (!state.drag.moved) {
+          state.drag.target.setExpanded(!state.drag.target.expanded);
         } else {
-          const bubble = new Bubble(rec);
-          bubbles.push(bubble);
-          bubblesById[id] = bubble;
+          const angle = Math.random() * Math.PI * 2;
+          const speed = randomRange(0.05, 0.2);
+          state.drag.target.vx = Math.cos(angle) * speed;
+          state.drag.target.vy = Math.sin(angle) * speed;
         }
+        
+        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false };
       }
-
-      console.log(`Synced bubbles: ${bubbles.length}`);
-    }
+    };
 
     // ==============================
-    // p5.js sketch
+    // P5.JS SKETCH
     // ==============================
-
     new p5(p => {
       p.setup = () => {
-        pRef = p;
+        state.p5Instance = p;
         const canvas = p.createCanvas(window.innerWidth, window.innerHeight);
         canvas.parent("p5-container");
         p.frameRate(60);
-        fetchRecords();
-        setInterval(fetchRecords, REFRESH_INTERVAL_MS);
+        
+        DataManager.fetchRecords();
+        setInterval(() => DataManager.fetchRecords(), CONFIG.REFRESH_INTERVAL_MS);
       };
 
       p.windowResized = () => {
@@ -459,22 +604,16 @@
       };
 
       p.draw = () => {
-        p.background(0);
-        for (const b of bubbles) {
-          b.update();
-          b.draw(p);
-        }
+        p.background(26);
+        state.bubbles.forEach(bubble => {
+          bubble.update();
+          bubble.draw(p);
+        });
       };
 
-      p.mousePressed = () => {
-        for (let i = bubbles.length - 1; i >= 0; i--) {
-          const b = bubbles[i];
-          if (b.hitTest(p.mouseX, p.mouseY)) {
-            b.setExpanded(!b.expanded);
-            break;
-          }
-        }
-      };
+      p.mousePressed = () => InteractionHandler.onMousePressed(p);
+      p.mouseDragged = () => InteractionHandler.onMouseDragged(p);
+      p.mouseReleased = () => InteractionHandler.onMouseReleased();
     });
   </script>
 </body>

@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Floating Sound Bubbles</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+      position: relative;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), transparent 35%),
+        radial-gradient(circle at 70% 70%, rgba(255,255,255,0.04), transparent 40%),
+        #1a1a1a;
+      mix-blend-mode: screen;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.25;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+    }
+    #p5-container {
+      position: fixed;
+      inset: 0;
+    }
+    .info-overlay {
+      position: fixed;
+      left: 1rem;
+      top: 1rem;
+      z-index: 10;
+      font-size: 0.9rem;
+      color: #aaa;
+      background: rgba(0,0,0,0.6);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="info-overlay">
+    Floating sound bubbles · click a bubble to expand / play, click again to collapse / stop.
+  </div>
+  <div id="p5-container"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+
+  <script>
+    // ==============================
+    // CONFIG
+    // ==============================
+    const CONFIG = {
+      CSV_URL: "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv",
+      REFRESH_INTERVAL_MS: 30_000,
+      BASE_RADIUS_MIN: 20,
+      BASE_RADIUS_MAX: 35,
+      EXPANDED_RADIUS: 225, // 450px diameter
+      FADE_DURATION_MS: 700,
+      LERP_SPEED: 0.1,
+      DRIFT_SPEED: { min: 0.08, max: 0.18 },
+      IMG_DRAW_SIZE: 600, // Fixed size for stable image rendering
+      GLOW_ALPHA: 0.14,
+      GLOW_RADIUS_MULTIPLIER: 2.1
+    };
+
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const randomRange = (min, max) => min + Math.random() * (max - min);
+
+    // ==============================
+    // STATE
+    // ==============================
+    const state = {
+      bubbles: [],
+      bubblesById: {},
+      p5Instance: null,
+      drag: { target: null, offsetX: 0, offsetY: 0, moved: false }
+    };
+
+    // ==============================
+    // AUDIO MANAGER
+    // ==============================
+    class AudioManager {
+      constructor(url) {
+        this.audio = new Audio(url);
+        this.audio.loop = true;
+        this.audio.volume = 0;
+        this.fadeInterval = null;
+      }
+
+      fade(targetVolume, duration, onComplete) {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        
+        const startVolume = this.audio.volume;
+        const startTime = performance.now();
+        
+        this.fadeInterval = setInterval(() => {
+          const progress = Math.min(1, (performance.now() - startTime) / duration);
+          this.audio.volume = lerp(startVolume, targetVolume, progress);
+          
+          if (progress >= 1) {
+            clearInterval(this.fadeInterval);
+            this.fadeInterval = null;
+            if (onComplete) onComplete();
+          }
+        }, 40);
+      }
+
+      fadeIn(duration = CONFIG.FADE_DURATION_MS) {
+        this.audio.play().catch(err => console.warn("Audio play error:", err));
+        this.fade(1, duration);
+      }
+
+      fadeOut(duration = CONFIG.FADE_DURATION_MS) {
+        this.fade(0, duration, () => this.audio.pause());
+      }
+
+      cleanup() {
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        this.audio.pause();
+      }
+    }
+
+    // ==============================
+    // IMAGE COLOR SAMPLER
+    // ==============================
+    const ImageColorSampler = {
+      async sampleColors(url) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          
+          img.onload = () => {
+            try {
+              const colors = this.extractColors(img);
+              resolve(colors);
+            } catch (e) {
+              console.warn("Failed to sample colors:", e);
+              resolve(this.getDefaultColors());
+            }
+          };
+          
+          img.onerror = () => {
+            console.warn("Could not load image:", url);
+            resolve(this.getDefaultColors());
+          };
+          
+          img.src = url;
+        });
+      },
+
+      extractColors(img) {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const size = 16;
+        
+        canvas.width = size;
+        canvas.height = size;
+        ctx.drawImage(img, 0, 0, size, size);
+        
+        const data = ctx.getImageData(0, 0, size, size).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        let maxBrightness = -1;
+        let brightest = [200, 200, 200];
+        
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+          
+          const brightness = data[i] + data[i + 1] + data[i + 2];
+          if (brightness > maxBrightness) {
+            maxBrightness = brightness;
+            brightest = [data[i], data[i + 1], data[i + 2]];
+          }
+        }
+        
+        const avg = [r / count, g / count, b / count];
+        const baseColor = avg.map(c => Math.min(255, Math.floor(c * 0.7 + 50)));
+        const glowColor = brightest.map(c => Math.min(255, Math.floor(c * 1.2)));
+        
+        return { baseColor, glowColor };
+      },
+
+      getDefaultColors() {
+        return {
+          baseColor: [200, 200, 255],
+          glowColor: [220, 220, 220]
+        };
+      }
+    };
+
+    // ==============================
+    // BUBBLE CLASS
+    // ==============================
+    class Bubble {
+      constructor(record) {
+        this.id = record.id;
+        this.title = record.title || "Untitled";
+        this.description = record.description || "";
+        this.imageUrl = record.imageUrl;
+        this.audioUrl = record.audioUrl;
+        
+        this.image = null;
+        this.audioManager = this.audioUrl ? new AudioManager(this.audioUrl) : null;
+        
+        this.baseColor = [200, 200, 255];
+        this.glowColor = [220, 220, 220];
+        
+        this.initializePosition();
+        this.initializeSize();
+        
+        this.expanded = false;
+        this.imageAlpha = 0;
+        
+        if (this.imageUrl) {
+          this.loadImageAndColors(this.imageUrl);
+        }
+      }
+
+      initializePosition() {
+        this.x = Math.random() * window.innerWidth;
+        this.y = Math.random() * window.innerHeight;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = randomRange(CONFIG.DRIFT_SPEED.min, CONFIG.DRIFT_SPEED.max);
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+      }
+
+      initializeSize() {
+        const baseRadius = randomRange(CONFIG.BASE_RADIUS_MIN, CONFIG.BASE_RADIUS_MAX);
+        this.baseRadius = baseRadius;
+        this.radius = baseRadius;
+        this.targetRadius = baseRadius;
+      }
+
+      async loadImageAndColors(url) {
+        const colors = await ImageColorSampler.sampleColors(url);
+        this.baseColor = colors.baseColor;
+        this.glowColor = colors.glowColor;
+        
+        if (state.p5Instance) {
+          state.p5Instance.loadImage(
+            url,
+            img => { this.image = img; },
+            err => console.warn("Could not load bubble image:", err)
+          );
+        }
+      }
+
+      setExpanded(expanded) {
+        this.expanded = expanded;
+        this.targetRadius = expanded ? CONFIG.EXPANDED_RADIUS : this.baseRadius;
+        
+        if (expanded) {
+          this.bringToFront();
+          this.audioManager?.fadeIn();
+        } else {
+          this.audioManager?.fadeOut();
+        }
+      }
+
+      bringToFront() {
+        const idx = state.bubbles.indexOf(this);
+        if (idx >= 0) {
+          state.bubbles.splice(idx, 1);
+          state.bubbles.push(this);
+        }
+      }
+
+      update() {
+        this.updatePosition();
+        this.updateAppearance();
+      }
+
+      updatePosition() {
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        const margin = this.radius + 10;
+        const { innerWidth: w, innerHeight: h } = window;
+        
+        if (this.x < margin) { this.x = margin; this.vx *= -1; }
+        if (this.x > w - margin) { this.x = w - margin; this.vx *= -1; }
+        if (this.y < margin) { this.y = margin; this.vy *= -1; }
+        if (this.y > h - margin) { this.y = h - margin; this.vy *= -1; }
+      }
+
+      updateAppearance() {
+        this.radius = lerp(this.radius, this.targetRadius, CONFIG.LERP_SPEED);
+        // Snap to target when very close to prevent endless micro-adjustments
+        if (Math.abs(this.radius - this.targetRadius) < 0.5) {
+          this.radius = this.targetRadius;
+        }
+        this.imageAlpha = lerp(this.imageAlpha, this.expanded ? 255 : 0, CONFIG.LERP_SPEED);
+      }
+
+      draw(p) {
+        this.drawGlow(p);
+        this.drawCircle(p);
+        if (this.expanded) this.drawLabel(p);
+      }
+
+      drawGlow(p) {
+        if (this.expanded) return;
+        
+        p.push();
+        p.translate(this.x, this.y);
+        p.blendMode(p.SCREEN);
+        
+        const ctx = p.drawingContext;
+        const outerRadius = this.radius * 2.1;
+        const gradient = ctx.createRadialGradient(0, 0, this.radius * 0.95, 0, 0, outerRadius);
+        
+        const [r, g, b] = this.glowColor;
+        gradient.addColorStop(0, `rgba(${r},${g},${b},0.14)`);
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, outerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        p.pop();
+      }
+
+      drawCircle(p) {
+        p.push();
+        p.translate(this.x, this.y);
+        p.blendMode(p.BLEND);
+        
+        const ctx = p.drawingContext;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.clip();
+        
+        if (this.image) {
+          // Draw image at FIXED size (creates stable "window" effect)
+          const iw = this.image.width;
+          const ih = this.image.height;
+          const scale = Math.min(CONFIG.IMG_DRAW_SIZE / iw, CONFIG.IMG_DRAW_SIZE / ih) * 1.02;
+          const w = iw * scale;
+          const h = ih * scale;
+          p.image(this.image, -w / 2, -h / 2, w, h);
+        } else {
+          const [r, g, b] = this.baseColor;
+          const alpha = this.expanded ? 240 : 220;
+          p.fill(r, g, b, alpha);
+          p.circle(0, 0, this.radius * 2);
+        }
+        
+        ctx.restore();
+        p.pop();
+      }
+
+      drawLabel(p) {
+        p.fill(255);
+        p.textAlign(p.CENTER, p.TOP);
+        p.textSize(14);
+        p.text(this.title, this.x, this.y + this.radius + 10);
+      }
+
+      hitTest(px, py) {
+        const dx = px - this.x;
+        const dy = py - this.y;
+        return dx * dx + dy * dy <= this.radius * this.radius;
+      }
+
+      updateData(record) {
+        this.title = record.title || this.title;
+        this.description = record.description || this.description;
+        
+        if (record.imageUrl && record.imageUrl !== this.imageUrl) {
+          this.imageUrl = record.imageUrl;
+          this.loadImageAndColors(record.imageUrl);
+        }
+        
+        if (record.audioUrl && record.audioUrl !== this.audioUrl) {
+          this.audioManager?.cleanup();
+          this.audioUrl = record.audioUrl;
+          this.audioManager = new AudioManager(record.audioUrl);
+        }
+      }
+
+      cleanup() {
+        this.audioManager?.cleanup();
+      }
+    }
+
+    // ==============================
+    // CSV PARSER
+    // ==============================
+    const CSVParser = {
+      parse(text) {
+        const lines = this.splitLines(text);
+        if (lines.length === 0) return [];
+        
+        const headers = this.parseRow(lines[0]).map(h => h.trim().toLowerCase());
+        const rows = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          const cols = this.parseRow(lines[i]);
+          const row = {};
+          headers.forEach((h, idx) => {
+            row[h] = cols[idx] || "";
+          });
+          rows.push(row);
+        }
+        
+        return rows;
+      },
+
+      splitLines(text) {
+        const lines = [];
+        let currentLine = "";
+        let inQuotes = false;
+        
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          
+          if (ch === '"') {
+            currentLine += ch;
+            if (inQuotes && text[i + 1] === '"') {
+              currentLine += text[++i];
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === "\n" && !inQuotes) {
+            lines.push(currentLine.replace(/\r$/, ""));
+            currentLine = "";
+          } else {
+            currentLine += ch;
+          }
+        }
+        
+        if (currentLine.trim()) {
+          lines.push(currentLine.replace(/\r$/, ""));
+        }
+        
+        return lines;
+      },
+
+      parseRow(line) {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === ',' && !inQuotes) {
+            result.push(current);
+            current = "";
+          } else {
+            current += ch;
+          }
+        }
+        
+        result.push(current);
+        return result;
+      }
+    };
+
+    // ==============================
+    // DATA MANAGER
+    // ==============================
+    const DataManager = {
+      async fetchRecords() {
+        try {
+          const response = await fetch(`${CONFIG.CSV_URL}?t=${Date.now()}`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          
+          const text = await response.text();
+          const rows = CSVParser.parse(text);
+          const records = this.transformRows(rows);
+          
+          this.syncBubbles(records);
+        } catch (error) {
+          console.error("Error fetching CSV:", error);
+        }
+      },
+
+      transformRows(rows) {
+        const records = {};
+        
+        rows.forEach(row => {
+          const id = row.id?.trim();
+          if (!id || !/^\d+/.test(id)) return;
+          
+          const descParts = [row.analysis, row.long_prompt]
+            .filter(p => p?.trim())
+            .map(p => p.trim());
+          
+          records[id] = {
+            id,
+            title: row.title?.trim() || "",
+            imageUrl: row.image_url?.trim() || "",
+            audioUrl: row.audio_url?.trim() || "",
+            description: descParts.join("\n\n")
+          };
+        });
+        
+        return records;
+      },
+
+      syncBubbles(records) {
+        // Remove deleted bubbles
+        state.bubbles = state.bubbles.filter(bubble => {
+          if (!records[bubble.id]) {
+            bubble.cleanup();
+            delete state.bubblesById[bubble.id];
+            return false;
+          }
+          return true;
+        });
+        
+        // Update or create bubbles
+        for (const id in records) {
+          const record = records[id];
+          
+          if (state.bubblesById[id]) {
+            state.bubblesById[id].updateData(record);
+          } else {
+            const bubble = new Bubble(record);
+            state.bubbles.push(bubble);
+            state.bubblesById[id] = bubble;
+          }
+        }
+        
+        console.log(`Synced bubbles: ${state.bubbles.length}`);
+      }
+    };
+
+    // ==============================
+    // INTERACTION HANDLERS
+    // ==============================
+    const InteractionHandler = {
+      onMousePressed(p) {
+        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false };
+        
+        for (let i = state.bubbles.length - 1; i >= 0; i--) {
+          const bubble = state.bubbles[i];
+          if (bubble.hitTest(p.mouseX, p.mouseY)) {
+            state.drag.target = bubble;
+            state.drag.offsetX = p.mouseX - bubble.x;
+            state.drag.offsetY = p.mouseY - bubble.y;
+            break;
+          }
+        }
+      },
+
+      onMouseDragged(p) {
+        if (state.drag.target) {
+          state.drag.moved = true;
+          state.drag.target.x = p.mouseX - state.drag.offsetX;
+          state.drag.target.y = p.mouseY - state.drag.offsetY;
+          state.drag.target.vx = 0;
+          state.drag.target.vy = 0;
+        }
+      },
+
+      onMouseReleased() {
+        if (!state.drag.target) return;
+        
+        if (!state.drag.moved) {
+          state.drag.target.setExpanded(!state.drag.target.expanded);
+        } else {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = randomRange(0.05, 0.2);
+          state.drag.target.vx = Math.cos(angle) * speed;
+          state.drag.target.vy = Math.sin(angle) * speed;
+        }
+        
+        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false };
+      }
+    };
+
+    // ==============================
+    // P5.JS SKETCH
+    // ==============================
+    new p5(p => {
+      p.setup = () => {
+        state.p5Instance = p;
+        const canvas = p.createCanvas(window.innerWidth, window.innerHeight);
+        canvas.parent("p5-container");
+        p.frameRate(60);
+        
+        DataManager.fetchRecords();
+        setInterval(() => DataManager.fetchRecords(), CONFIG.REFRESH_INTERVAL_MS);
+      };
+
+      p.windowResized = () => {
+        p.resizeCanvas(window.innerWidth, window.innerHeight);
+      };
+
+      p.draw = () => {
+        p.background(26);
+        state.bubbles.forEach(bubble => {
+          bubble.update();
+          bubble.draw(p);
+        });
+      };
+
+      p.mousePressed = () => InteractionHandler.onMousePressed(p);
+      p.mouseDragged = () => InteractionHandler.onMouseDragged(p);
+      p.mouseReleased = () => InteractionHandler.onMouseReleased();
+    });
+  </script>
+</body>
+</html>
