@@ -48,7 +48,7 @@
     // CONFIG
     // ==============================
     const CONFIG = {
-      CSV_URL: "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv",
+      CSV_URL: "https://raw.githubusercontent.com/fraloisio/Sonic-collages-exp/refs/heads/main/records.csv",
       REFRESH_INTERVAL_MS: 30_000,
       BASE_RADIUS_MIN: 20,
       BASE_RADIUS_MAX: 35,
@@ -604,7 +604,7 @@
       };
 
       p.draw = () => {
-        p.background(26);
+        p.background(0);
         state.bubbles.forEach(bubble => {
           bubble.update();
           bubble.draw(p);
