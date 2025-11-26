@@ -51,18 +51,16 @@
       USE_LOCAL: true, // toggle between local CSV/paths and remote
       CSV_URL: "https://raw.githubusercontent.com/fraloisio/sonic-runs-assets/refs/heads/main/records.csv",
       LOCAL_CSV: "./records.csv",
-      REFRESH_INTERVAL_MS: 5_000,
+      REFRESH_INTERVAL_MS: 30_000,
       BASE_RADIUS_MIN: 10,
       BASE_RADIUS_MAX: 45,
-      EXPANDED_RADIUS: 250, // 450px diameter
+      EXPANDED_RADIUS: 225, // 450px diameter
       FADE_DURATION_MS: 700,
-      LERP_SPEED: 0.08,
+      LERP_SPEED: 0.1,
       DRIFT_SPEED: { min: 0.08, max: 0.18 },
-      IMG_DRAW_SIZE: 450, // Fixed size for stable image rendering
+      IMG_DRAW_SIZE: 350, // Fixed size for stable image rendering
       GLOW_ALPHA: 0.18,
-      GLOW_RADIUS_MULTIPLIER: 2.5,
-      // Overlay on images (multiply). Set alpha to 0 to disable quickly.
-      IMAGE_OVERLAY_RGBA: [0, 0, 0, 38] // 38 ~ 15% black
+      GLOW_RADIUS_MULTIPLIER: 2.5
     };
 
     const lerp = (a, b, t) => a + (b - a) * t;
@@ -75,7 +73,7 @@
       bubbles: [],
       bubblesById: {},
       p5Instance: null,
-      drag: { target: null, offsetX: 0, offsetY: 0, moved: false, startX: 0, startY: 0 }
+      drag: { target: null, offsetX: 0, offsetY: 0, moved: false }
     };
 
     // ==============================
@@ -211,9 +209,11 @@
         
         this.initializePosition();
         this.initializeSize();
-        
+
         this.expanded = false;
         this.imageAlpha = 0;
+        this.clipProgress = 0;
+        this.clipTarget = 0;
         
         if (this.imageUrl) {
           this.loadImageAndColors(this.imageUrl);
@@ -253,7 +253,8 @@
       setExpanded(expanded) {
         this.expanded = expanded;
         this.targetRadius = expanded ? CONFIG.EXPANDED_RADIUS : this.baseRadius;
-        
+        this.clipTarget = expanded ? 1 : 0;
+
         if (expanded) {
           this.bringToFront();
           this.audioManager?.fadeIn();
@@ -295,6 +296,7 @@
           this.radius = this.targetRadius;
         }
         this.imageAlpha = lerp(this.imageAlpha, this.expanded ? 255 : 0, CONFIG.LERP_SPEED);
+        this.clipProgress = lerp(this.clipProgress, this.clipTarget, 0.12);
       }
 
       draw(p) {
@@ -329,38 +331,54 @@
       drawCircle(p) {
         p.push();
         p.translate(this.x, this.y);
-        p.blendMode(p.BLEND);
-        
         const ctx = p.drawingContext;
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.clip();
+        const iw = this.image?.width || CONFIG.IMG_DRAW_SIZE;
+        const ih = this.image?.height || CONFIG.IMG_DRAW_SIZE;
+        const target = CONFIG.IMG_DRAW_SIZE * 1.1;
+        const scale = Math.max(target / iw, target / ih);
+        const drawW = iw * scale;
+        const drawH = ih * scale;
+
+        if (!this.expanded && this.clipProgress < 0.001) {
+          ctx.beginPath();
+          ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+          ctx.clip();
+        } else {
+          const startSize = this.radius * 2;
+          const t = this.clipProgress;
+          const w = lerp(startSize, drawW, t);
+          const h = lerp(startSize, drawH, t);
+          const corner = Math.max(0, Math.min(startSize / 2, lerp(this.radius, 0, t) * 0.9));
+          const x = -w / 2;
+          const y = -h / 2;
+          ctx.beginPath();
+          ctx.moveTo(x + corner, y);
+          ctx.lineTo(x + w - corner, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + corner);
+          ctx.lineTo(x + w, y + h - corner);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - corner, y + h);
+          ctx.lineTo(x + corner, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - corner);
+          ctx.lineTo(x, y + corner);
+          ctx.quadraticCurveTo(x, y, x + corner, y);
+          ctx.clip();
+        }
 
         if (this.image) {
           p.blendMode(this.expanded ? p.BLEND : p.SCREEN);
-          // Draw image at a fixed size with slight overdraw; only the mask resizes
-          const iw = this.image.width;
-          const ih = this.image.height;
-          const target = CONFIG.IMG_DRAW_SIZE * 1.1;
-          const scale = Math.max(target / iw, target / ih);
-          const w = iw * scale;
-          const h = ih * scale;
-          p.image(this.image, -w / 2, -h / 2, w, h);
-          const [or, og, ob, oa] = CONFIG.IMAGE_OVERLAY_RGBA;
-          if (oa > 0) {
-            p.blendMode(p.MULTIPLY);
-            p.noStroke();
-            p.fill(or, og, ob, oa);
-            p.circle(0, 0, Math.max(w, h)); // clipped by mask
-            p.blendMode(p.BLEND);
-          }
+          p.image(this.image, -drawW / 2, -drawH / 2, drawW, drawH);
         } else {
           p.blendMode(p.BLEND);
           const [r, g, b] = this.baseColor;
           const alpha = this.expanded ? 240 : 220;
-          p.fill(r, g, b, alpha);
-          p.circle(0, 0, this.radius * 2);
+          if (this.expanded) {
+            p.rectMode(p.CENTER);
+            p.rect(0, 0, CONFIG.IMG_DRAW_SIZE, CONFIG.IMG_DRAW_SIZE);
+          } else {
+            p.fill(r, g, b, alpha);
+            p.circle(0, 0, this.radius * 2);
+          }
         }
         
         ctx.restore();
@@ -377,9 +395,19 @@
       hitTest(px, py) {
         const dx = px - this.x;
         const dy = py - this.y;
-        const pad = this.radius * 0.12 + 4; // slightly larger click area for easier taps
-        const r = this.radius + pad;
-        return dx * dx + dy * dy <= r * r;
+        if (this.expanded) {
+          const iw = this.image?.width || CONFIG.IMG_DRAW_SIZE;
+          const ih = this.image?.height || CONFIG.IMG_DRAW_SIZE;
+          const target = CONFIG.IMG_DRAW_SIZE * 1.1;
+          const scale = Math.max(target / iw, target / ih);
+          const w = iw * scale;
+          const h = ih * scale;
+          const startSize = this.radius * 2;
+          const clipW = lerp(startSize, w, this.clipProgress);
+          const clipH = lerp(startSize, h, this.clipProgress);
+          return Math.abs(dx) <= clipW / 2 && Math.abs(dy) <= clipH / 2;
+        }
+        return dx * dx + dy * dy <= this.radius * this.radius;
       }
 
       updateData(record) {
@@ -614,7 +642,7 @@
         const dy = p.mouseY - state.drag.startY;
         const movedDist = Math.hypot(dx, dy);
         
-        if (!state.drag.moved || movedDist < 6) {
+        if (!state.drag.moved || movedDist < 5) {
           state.drag.target.setExpanded(!state.drag.target.expanded);
         } else {
           const angle = Math.random() * Math.PI * 2;
@@ -623,7 +651,7 @@
           state.drag.target.vy = Math.sin(angle) * speed;
         }
         
-        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false, startX: 0, startY: 0 };
+        state.drag = { target: null, offsetX: 0, offsetY: 0, moved: false };
       }
     };
 
